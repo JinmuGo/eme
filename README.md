@@ -1,10 +1,10 @@
 # eme
 
-> Eeny, meeny, miny, moe 
+> Eeny, meeny, miny, moe.
 
-AI agent session manager for git worktrees.
+**Mission control for your AI coding agents.** Which agent needs you? eme counts them out.
 
-`eme` spins up a tmux session for every project folder, keeps each git worktree in its own window, and launches your AI agent with one key.
+`eme` runs each AI coding agent in its own git worktree as a real tmux session, and shows you — across every worktree — which one is `waiting-for-input`, which is still `working`, and which has `exited`. All without leaving the terminal.
 
 ![demo](docs/demo.gif)
 
@@ -70,10 +70,10 @@ You can override the agent per folder or per worktree from the dashboard.
 
 ## Why eme?
 
-- **folder = project = tmux session**: no registration step.
-- **git worktree-native**: each branch gets an isolated directory and tmux window.
-- **AI agent-first**: launch, track, and switch between agent sessions from one dashboard.
-- **vim-like modal TUI**: works inside a tmux popup or standalone.
+- **Mission control for parallel agents**: one dashboard shows every agent as `idle`, `working`, `waiting-for-input`, or `exited` — jump to the one that needs you.
+- **Native to your tmux**: agents run in your real tmux sessions and windows (full compat, vim-modal, popup) — not a hidden tmux a TUI owns, not an Electron app.
+- **git worktree-native**: each agent gets an isolated worktree and its own tmux window. `folder = project = tmux session`, no registration step.
+- **Stays out of your way**: no diff/merge/approval GUI — review stays in your editor and git.
 
 ## Documentation
 
