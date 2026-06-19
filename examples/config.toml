@@ -1,0 +1,7 @@
+# Example eme configuration
+
+[agent]
+command = "opencode"
+
+# You can override the agent per folder or per worktree from the dashboard.
+# Global default is used when no override is set.
