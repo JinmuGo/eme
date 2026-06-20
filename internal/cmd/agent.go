@@ -19,6 +19,54 @@ var (
 	agentDryRun bool
 )
 
+// sendKeys is the tmux send-keys seam (swapped in tests).
+var sendKeys = tmux.SendKeys
+
+// resolvedAgentCommand resolves the effective agent command for a worktree:
+// the worktree override, then the session default, then the global config.
+func resolvedAgentCommand(sess *state.Session, w *state.Worktree) string {
+	if w.AgentCommandOverride != "" {
+		return w.AgentCommandOverride
+	}
+	if sess.AgentCommand != "" {
+		return sess.AgentCommand
+	}
+	return cfg.Agent.Command
+}
+
+// launchAgentCommand starts command in the worktree's tmux window. The window's
+// cwd is already the worktree, so the bare command is sent with no path
+// argument (which is what makes claude/codex/gemini work, not just opencode).
+func launchAgentCommand(s *state.State, sess *state.Session, w *state.Worktree, command string) error {
+	binary := strings.Fields(command)[0]
+	if _, _, err := runner.Default.Run(context.Background(), "which", binary); err != nil {
+		return errors.New(errors.CodeAgentNotFound,
+			fmt.Sprintf("Configured agent %q not found on PATH.", binary),
+			"The agent binary is not executable or not installed.",
+			"Install it or set agent.command in ~/.config/eme/config.toml.")
+	}
+
+	target := sess.TmuxName + ":" + w.TmuxWindowID
+	if err := sendKeys(target, command); err != nil {
+		return errors.Wrap(errors.CodeCommandFailed,
+			"Could not send agent command to tmux pane.",
+			"tmux send-keys failed.",
+			"Verify the tmux window still exists.", err)
+	}
+
+	// Best-effort: record pane PID as agent PID.
+	if pid, err := tmux.PanePID(sess.TmuxName, w.TmuxWindowID); err == nil {
+		w.AgentPID = pid
+		w.LastAgentCommand = command
+		if err := saveState(s); err != nil {
+			return err
+		}
+	}
+
+	fmt.Printf("Started agent in %s/%s\n", sess.DisplayName, w.Name)
+	return nil
+}
+
 var agentCmd = &cobra.Command{
 	Use:   "agent <session> [worktree]",
 	Short: "Start or stop an AI agent in a worktree",
@@ -56,22 +104,15 @@ var agentCmd = &cobra.Command{
 }
 
 func toggleAgent(s *state.State, sess *state.Session, w *state.Worktree) error {
-	// Determine agent command.
-	agentCmd := w.AgentCommandOverride
-	if agentCmd == "" {
-		agentCmd = sess.AgentCommand
-	}
-	if agentCmd == "" {
-		agentCmd = cfg.Agent.Command
-	}
-	if agentCmd == "" {
+	command := resolvedAgentCommand(sess, w)
+	if command == "" {
 		return errors.New(errors.CodeAgentNotFound,
 			"No agent command configured.",
 			"Neither session, worktree, nor global config specifies an agent command.",
 			"Set agent.command in ~/.config/eme/config.toml.")
 	}
 
-	// If we have a recorded PID and it is alive, stop it by sending Ctrl+C to the pane.
+	// If we have a recorded PID and it is alive, stop it by sending Ctrl+C.
 	if w.AgentPID > 0 && processExists(w.AgentPID) {
 		target := sess.TmuxName + ":" + w.TmuxWindowID
 		if err := tmux.SendKey(target, "C-c"); err != nil {
@@ -88,36 +129,7 @@ func toggleAgent(s *state.State, sess *state.Session, w *state.Worktree) error {
 		return nil
 	}
 
-	// Verify agent binary exists.
-	binary := strings.Fields(agentCmd)[0]
-	if _, _, err := runner.Default.Run(context.Background(), "which", binary); err != nil {
-		return errors.New(errors.CodeAgentNotFound,
-			fmt.Sprintf("Configured agent %q not found on PATH.", binary),
-			"The agent binary is not executable or not installed.",
-			"Install it or set agent.command in ~/.config/eme/config.toml.")
-	}
-
-	target := sess.TmuxName + ":" + w.TmuxWindowID
-	cmdLine := agentCmd + " " + w.Path
-	if err := tmux.SendKeys(target, cmdLine); err != nil {
-		return errors.Wrap(errors.CodeCommandFailed,
-			"Could not send agent command to tmux pane.",
-			"tmux send-keys failed.",
-			"Verify the tmux window still exists.", err)
-	}
-
-	// Best-effort: record pane PID as agent PID.
-	pid, err := tmux.PanePID(sess.TmuxName, w.TmuxWindowID)
-	if err == nil {
-		w.AgentPID = pid
-		w.LastAgentCommand = agentCmd
-		if err := saveState(s); err != nil {
-			return err
-		}
-	}
-
-	fmt.Printf("Started agent in %s/%s\n", sess.DisplayName, w.Name)
-	return nil
+	return launchAgentCommand(s, sess, w, command)
 }
 
 func processExists(pid int) bool {
