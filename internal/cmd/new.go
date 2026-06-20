@@ -22,6 +22,7 @@ import (
 var (
 	worktreeSession string
 	newDryRun       bool
+	convertFlag     bool
 )
 
 var newCmd = &cobra.Command{
@@ -259,11 +260,15 @@ func createProject(folder string) error {
 			"Provide a directory path or pick one from the picker.")
 	}
 
-	if git.HasGitDir(abs) {
-		return errors.New(errors.CodeExistingGitRepo,
-			fmt.Sprintf("%s already contains a git repository.", abs),
-			"eme uses a nested bare layout and cannot adopt an existing git repo.",
-			"Use an empty parent folder, or create the project elsewhere.")
+	c, err := git.Classify(abs)
+	if err != nil {
+		return errors.Wrap(errors.CodeCommandFailed,
+			"Failed to inspect the folder.",
+			"git could not classify the directory.",
+			"Run `eme doctor` to verify git.", err)
+	}
+	if c.Kind != git.KindGreenfield {
+		return routeByClassification(c, convertFlag)
 	}
 
 	if err := requireTmuxServer(); err != nil {
@@ -494,6 +499,86 @@ func createWorktree(sessionArg, name string) error {
 
 	if tmux.DetectEnv().InsideTmux {
 		_ = tmux.SwitchClient(sess.TmuxName, windowID)
+	}
+	return nil
+}
+
+// routeByClassification handles every non-greenfield folder kind by dispatching
+// to the appropriate action: adopt in-place, switch to an existing session, or
+// refuse with a structured error.
+func routeByClassification(c git.Classification, convert bool) error {
+	switch c.Kind {
+	case git.KindNormalRoot:
+		if convert {
+			return convertToNestedBare(c.TopLevel)
+		}
+		return adoptInPlace(c.TopLevel)
+	case git.KindNestedBare:
+		s, err := loadState()
+		if err != nil {
+			return err
+		}
+		if sess := s.SessionByRoot(c.TopLevel); sess != nil {
+			return switchToSession(sess)
+		}
+		return adoptInPlace(c.TopLevel)
+	case git.KindLinkedWorktree:
+		if c.MainPath == "" {
+			return errors.New(errors.CodeSessionNotFound,
+				"Could not resolve the main worktree for this linked worktree.",
+				"git worktree list returned no main entry.",
+				"Pick the project's main folder instead.")
+		}
+		return adoptInPlace(c.MainPath)
+	case git.KindSubdirectory:
+		return adoptInPlace(c.TopLevel)
+	case git.KindSubmodule:
+		return errors.New(errors.CodeSubmoduleRepo,
+			"That folder is a git submodule.",
+			"A submodule's gitdir lives under its superproject and cannot be adopted standalone.",
+			"Adopt the superproject folder instead.")
+	case git.KindBareRepo:
+		return errors.New(errors.CodeBareRepo,
+			"That folder is a bare git repository.",
+			"eme adopts working clones, not standalone bare repos.",
+			"Pick a normal clone, or create a new project in an empty folder.")
+	case git.KindBrokenGit:
+		return errors.New(errors.CodeBrokenGit,
+			"That folder has a broken .git pointer.",
+			"A .git file or directory exists but git cannot use it.",
+			"Repair or remove the .git pointer, then try again.")
+	default:
+		return errors.New(errors.CodeInvalidFolder,
+			"Unrecognized folder kind.",
+			"eme could not determine how to handle this folder.",
+			"Pick a different folder.")
+	}
+}
+
+// switchToSession switches the current tmux client to the session's main
+// worktree window. If not inside tmux, it attaches to the session instead.
+func switchToSession(sess *state.Session) error {
+	w := sess.WorktreeByName("main")
+	if w == nil {
+		return errors.New(errors.CodeSessionNotFound,
+			fmt.Sprintf("session %q has no main worktree.", sess.DisplayName),
+			"The main worktree is missing or corrupted.",
+			"Recreate the project with `eme new`.")
+	}
+	if tmux.DetectEnv().InsideTmux {
+		if err := tmux.SwitchClient(sess.TmuxName, w.TmuxWindowID); err != nil {
+			return errors.Wrap(errors.CodeCommandFailed,
+				fmt.Sprintf("Could not switch to %s/main.", sess.DisplayName),
+				"tmux switch-client failed.",
+				"Verify the tmux session still exists with `tmux list-sessions`.", err)
+		}
+		return nil
+	}
+	if err := tmux.AttachSession(sess.TmuxName, w.TmuxWindowID); err != nil {
+		return errors.Wrap(errors.CodeCommandFailed,
+			fmt.Sprintf("Could not attach to %s/main.", sess.DisplayName),
+			"tmux attach-session failed.",
+			"Verify the tmux session exists.", err)
 	}
 	return nil
 }

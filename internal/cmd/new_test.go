@@ -4,7 +4,27 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/jinmu/eme/internal/errors"
+	"github.com/jinmu/eme/internal/git"
 )
+
+func TestRouteByClassification(t *testing.T) {
+	cases := []struct {
+		kind    git.Kind
+		wantErr string // expected error code
+	}{
+		{git.KindSubmodule, errors.CodeSubmoduleRepo},
+		{git.KindBareRepo, errors.CodeBareRepo},
+		{git.KindBrokenGit, errors.CodeBrokenGit},
+	}
+	for _, tc := range cases {
+		err := routeByClassification(git.Classification{Kind: tc.kind, TopLevel: "/x"}, false)
+		if e := errors.As(err); e == nil || e.Code != tc.wantErr {
+			t.Errorf("kind %v: got %v, want code %s", tc.kind, err, tc.wantErr)
+		}
+	}
+}
 
 func TestScanFolders_DeduplicatesAndSkipsHidden(t *testing.T) {
 	home := t.TempDir()
