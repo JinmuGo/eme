@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -13,8 +14,9 @@ const DefaultPickerMaxDepth = 3
 
 // Config holds user configuration for eme.
 type Config struct {
-	Agent  Agent  `toml:"agent"`
-	Picker Picker `toml:"picker"`
+	Agent    Agent    `toml:"agent"`
+	Picker   Picker   `toml:"picker"`
+	Worktree Worktree `toml:"worktree"`
 }
 
 // Agent configures agent execution.
@@ -31,11 +33,19 @@ type Picker struct {
 	Roots []string `toml:"roots"`
 }
 
+// Worktree configures where in-place worktrees are created.
+type Worktree struct {
+	// DirTemplate is the sibling directory name for an adopted repo's worktrees.
+	// {repo} expands to the repo basename. Must resolve to a sibling of root.
+	DirTemplate string `toml:"dir_template"`
+}
+
 // Default returns a config with sensible defaults.
 func Default() *Config {
 	return &Config{
-		Agent:  Agent{Command: "opencode"},
-		Picker: Picker{MaxDepth: DefaultPickerMaxDepth},
+		Agent:    Agent{Command: "opencode"},
+		Picker:   Picker{MaxDepth: DefaultPickerMaxDepth},
+		Worktree: Worktree{DirTemplate: "{repo}.worktrees"},
 	}
 }
 
@@ -63,6 +73,9 @@ func Load(path string) (*Config, error) {
 	if cfg.Picker.MaxDepth <= 0 {
 		cfg.Picker.MaxDepth = DefaultPickerMaxDepth
 	}
+	if cfg.Worktree.DirTemplate == "" {
+		cfg.Worktree.DirTemplate = "{repo}.worktrees"
+	}
 	return cfg, nil
 }
 
@@ -78,4 +91,19 @@ func (c *Config) Save(path string) error {
 	defer f.Close()
 	enc := toml.NewEncoder(f)
 	return enc.Encode(c)
+}
+
+// WorktreeDirFor resolves the worktree container directory for an in-place root.
+// The template must produce a sibling of root (no absolute path, no parent escape).
+func WorktreeDirFor(template, root string) (string, error) {
+	name := strings.ReplaceAll(template, "{repo}", filepath.Base(root))
+	if filepath.IsAbs(name) {
+		return "", fmt.Errorf("worktree dir_template must be relative, got %q", template)
+	}
+	resolved := filepath.Join(filepath.Dir(root), name)
+	parent := filepath.Dir(root)
+	if rel, err := filepath.Rel(parent, resolved); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("worktree dir_template must stay within the project's parent dir, got %q", template)
+	}
+	return resolved, nil
 }
