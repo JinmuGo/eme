@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -110,3 +111,32 @@ func TestRun_PrependsWorkingDir(t *testing.T) {
 		t.Errorf("command mismatch\n got: %s\nwant: %s", got, want)
 	}
 }
+
+func TestDiffStat_SumsNumstat(t *testing.T) {
+	mock := runner.NewMock()
+	mock.Set("git", []string{"-C", "/wt", "diff", "HEAD", "--numstat"},
+		"12\t3\tmain.go\n0\t5\tx.go\n-\t-\tbin.png\n", "", nil)
+	Runner = mock
+	defer func() { Runner = runner.Default }()
+
+	added, deleted, ok := DiffStat("/wt")
+	if !ok {
+		t.Fatal("ok = false, want true")
+	}
+	if added != 12 || deleted != 8 {
+		t.Errorf("added,deleted = %d,%d, want 12,8", added, deleted)
+	}
+}
+
+func TestDiffStat_ErrorReturnsNotOK(t *testing.T) {
+	mock := runner.NewMock()
+	mock.Set("git", []string{"-C", "/wt", "diff", "HEAD", "--numstat"}, "", "fatal", errFake)
+	Runner = mock
+	defer func() { Runner = runner.Default }()
+
+	if _, _, ok := DiffStat("/wt"); ok {
+		t.Error("ok = true, want false on git error")
+	}
+}
+
+var errFake = fmt.Errorf("boom")

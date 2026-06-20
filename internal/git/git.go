@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/jinmu/eme/internal/runner"
@@ -181,4 +182,29 @@ func Version() (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(out), nil
+}
+
+// DiffStat returns the added and deleted line counts of uncommitted changes in
+// dir (working tree vs HEAD) via `git -C dir diff HEAD --numstat`. ok is false
+// on any error; callers treat that as "no stat" and render nothing. Binary
+// files (numstat "-") contribute zero.
+func DiffStat(dir string) (added, deleted int, ok bool) {
+	out, _, err := Run(context.Background(), dir, "diff", "HEAD", "--numstat")
+	if err != nil {
+		return 0, 0, false
+	}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		a, errA := strconv.Atoi(fields[0])
+		d, errD := strconv.Atoi(fields[1])
+		if errA != nil || errD != nil {
+			continue // binary "-" rows
+		}
+		added += a
+		deleted += d
+	}
+	return added, deleted, true
 }
