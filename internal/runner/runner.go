@@ -13,6 +13,9 @@ import (
 type Runner interface {
 	// Run executes name with the given arguments and returns stdout, stderr, and an error.
 	Run(ctx context.Context, name string, args ...string) (string, string, error)
+	// RunEnv runs name with args using env as the child process environment.
+	// A nil env inherits the current process environment.
+	RunEnv(ctx context.Context, env []string, name string, args ...string) (string, string, error)
 }
 
 // Default is the production runner.
@@ -23,18 +26,24 @@ var Verbose bool
 
 type defaultRunner struct{}
 
-func (r *defaultRunner) Run(ctx context.Context, name string, args ...string) (string, string, error) {
+func (r *defaultRunner) RunEnv(ctx context.Context, env []string, name string, args ...string) (string, string, error) {
 	if Verbose {
 		fmt.Fprintf(os.Stderr, "+ %s %v\n", name, args)
 	}
 	cmd := exec.CommandContext(ctx, name, args...)
-	out, err := cmd.CombinedOutput()
-	stdout := string(out)
-	stderr := stdout // combined
-	if err != nil {
-		return stdout, stderr, fmt.Errorf("%s %v: %w", name, args, err)
+	if env != nil {
+		cmd.Env = env
 	}
-	return stdout, stderr, nil
+	out, err := cmd.CombinedOutput()
+	s := string(out)
+	if err != nil {
+		return s, s, fmt.Errorf("%s %v: %w", name, args, err)
+	}
+	return s, s, nil
+}
+
+func (r *defaultRunner) Run(ctx context.Context, name string, args ...string) (string, string, error) {
+	return r.RunEnv(ctx, nil, name, args...)
 }
 
 // Mock records invocations and returns canned responses.
@@ -47,6 +56,7 @@ type Mock struct {
 type MockCall struct {
 	Name string
 	Args []string
+	Env  []string
 }
 
 // MockResponse is the canned response for a command key.
@@ -70,13 +80,17 @@ func Key(name string, args ...string) string {
 	return s
 }
 
-func (m *Mock) Run(ctx context.Context, name string, args ...string) (string, string, error) {
-	m.Calls = append(m.Calls, MockCall{Name: name, Args: args})
+func (m *Mock) RunEnv(ctx context.Context, env []string, name string, args ...string) (string, string, error) {
+	m.Calls = append(m.Calls, MockCall{Name: name, Args: args, Env: env})
 	resp, ok := m.Outputs[Key(name, args...)]
 	if !ok {
 		return "", "", fmt.Errorf("mock runner: unexpected command %s %v", name, args)
 	}
 	return resp.Stdout, resp.Stderr, resp.Err
+}
+
+func (m *Mock) Run(ctx context.Context, name string, args ...string) (string, string, error) {
+	return m.RunEnv(ctx, nil, name, args...)
 }
 
 // Set configures a canned response for a command.
