@@ -96,9 +96,7 @@ func adoptInPlace(root string) error {
 	_ = excludeFromParentRepo(worktreeDir)
 
 	fmt.Printf("Adopted %q in place at %s\n", displayName, root)
-	if tmux.DetectEnv().InsideTmux {
-		_ = tmux.SwitchClient(tmuxName, windowID)
-	}
+	maybeSwitchClient(tmuxName, windowID)
 	return nil
 }
 

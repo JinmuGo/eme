@@ -23,6 +23,7 @@ var (
 	worktreeSession string
 	newDryRun       bool
 	convertFlag     bool
+	noSwitchFlag    bool
 )
 
 var newCmd = &cobra.Command{
@@ -70,6 +71,20 @@ func init() {
 	newCmd.Flags().StringVar(&worktreeSession, "worktree", "", "create a worktree in an existing session")
 	newCmd.Flags().BoolVar(&newDryRun, "dry-run", false, "print planned actions without executing")
 	newCmd.Flags().BoolVar(&convertFlag, "convert", false, "restructure an existing clone into a nested-bare layout (backs up first)")
+	newCmd.Flags().BoolVar(&noSwitchFlag, "no-switch", false, "do not switch the tmux client after creating (used by the dashboard)")
+}
+
+// maybeSwitchClient switches the tmux client to the given window, unless
+// --no-switch was passed. The dashboard launches `eme new` with --no-switch so
+// it stays on the dashboard instead of jumping into the freshly created
+// session; a plain `eme new <folder>` from the shell still switches.
+func maybeSwitchClient(session, windowID string) {
+	if noSwitchFlag {
+		return
+	}
+	if tmux.DetectEnv().InsideTmux {
+		_ = tmux.SwitchClient(session, windowID)
+	}
 }
 
 // pickFolder runs the interactive folder picker. cancelled is true when the
@@ -435,9 +450,7 @@ func registerNestedBareProject(root string) error {
 		return err
 	}
 	fmt.Printf("Created project %q at %s\n", displayName, root)
-	if tmux.DetectEnv().InsideTmux {
-		_ = tmux.SwitchClient(tmuxName, windowID)
-	}
+	maybeSwitchClient(tmuxName, windowID)
 	return nil
 }
 
@@ -564,9 +577,7 @@ func createWorktree(sessionArg, name string) error {
 
 	fmt.Printf("Created worktree %q in %s\n", name, sess.DisplayName)
 
-	if tmux.DetectEnv().InsideTmux {
-		_ = tmux.SwitchClient(sess.TmuxName, windowID)
-	}
+	maybeSwitchClient(sess.TmuxName, windowID)
 	return nil
 }
 
@@ -625,6 +636,11 @@ func routeByClassification(c git.Classification, convert bool) error {
 // switchToSession switches the current tmux client to the session's main
 // worktree window. If not inside tmux, it attaches to the session instead.
 func switchToSession(sess *state.Session) error {
+	// When invoked with --no-switch (e.g. from the dashboard), the project is
+	// already registered and visible; do not move the tmux client.
+	if noSwitchFlag {
+		return nil
+	}
 	w := sess.WorktreeByName("main")
 	if w == nil {
 		return errors.New(errors.CodeSessionNotFound,

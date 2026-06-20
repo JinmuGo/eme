@@ -59,6 +59,25 @@ func TestConvertFlagRegistered(t *testing.T) {
 	}
 }
 
+func TestNoSwitchFlagRegistered(t *testing.T) {
+	if newCmd.Flags().Lookup("no-switch") == nil {
+		t.Errorf("--no-switch flag not registered on newCmd")
+	}
+}
+
+func TestSwitchToSession_NoSwitchIsNoop(t *testing.T) {
+	// With --no-switch (the dashboard's create path) switchToSession must return
+	// nil before touching tmux or the session's worktrees, so the dashboard
+	// stays put instead of jumping to an already-managed project.
+	prev := noSwitchFlag
+	noSwitchFlag = true
+	defer func() { noSwitchFlag = prev }()
+
+	if err := switchToSession(&state.Session{DisplayName: "x"}); err != nil {
+		t.Errorf("switchToSession with --no-switch = %v, want nil", err)
+	}
+}
+
 func TestScanFolders_DeduplicatesAndSkipsHidden(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
