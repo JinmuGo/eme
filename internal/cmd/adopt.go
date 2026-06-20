@@ -68,7 +68,7 @@ func adoptInPlace(root string) error {
 	}
 
 	var override string
-	if worktreeDir != root+".worktrees" {
+	if cfg.Worktree.DirTemplate != config.Default().Worktree.DirTemplate {
 		override = worktreeDir
 	}
 	sess := state.Session{
