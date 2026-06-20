@@ -24,6 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Adopt an existing (non-bare) git clone in place: `eme new <existing-clone>` registers the clone as a project without restructuring it. New worktrees are created in a sibling `<repo>.worktrees/` container, and the adopted clone's directory is never deleted by `eme kill`.
+- `eme forget <session>` removes a project from eme without touching disk or tmux — the disk-safe way to stop managing an adopted clone.
+- `[worktree] dir_template` config (default `{repo}.worktrees`) controls where in-place worktrees are created; the template must resolve to a sibling of the repo.
+- `eme doctor <folder>` classifies a folder's adopt-ability (greenfield, normal repo, submodule, bare, …); plain `eme doctor` additionally audits registered in-place projects for moved roots and prunable worktrees.
+- `eme new --convert <clone>` restructures an existing normal clone into eme's nested-bare layout losslessly: it hard-links the gitdir, builds the new layout in a temporary directory, and atomically swaps it in while keeping a full backup (printed on success — delete it once verified). Repositories with submodules are refused in v1 (adopt them in place instead).
+
+### Planned
+
 - Full worktree-level agent status polling in the dashboard.
 - Per-folder and per-worktree agent command overrides exposed through the UI.
 - Prebuilt binaries and Homebrew formula.

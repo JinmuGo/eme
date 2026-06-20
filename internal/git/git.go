@@ -57,33 +57,94 @@ func CreateEmptyCommit(worktreeDir, branch, message string) error {
 	return err
 }
 
-// WorktreeAdd creates a new worktree relative to a sibling worktree.
-// baseDir: absolute path to an existing worktree (e.g. <project>/main).
-// name: directory name for the new worktree (sibling of baseDir).
-// branch: branch name; if empty and newBranch is true, name is used as branch.
-// newBranch: whether to create a new branch with -b.
+// WorktreeAdd creates a worktree as a sibling of baseDir named name.
 func WorktreeAdd(baseDir, name, branch string, newBranch bool) (string, error) {
 	target := filepath.Join(filepath.Dir(baseDir), name)
-	relPath := "../" + name
-	args := []string{"worktree", "add"}
+	if err := WorktreeAddAt(baseDir, target, branch, newBranch); err != nil {
+		return "", err
+	}
+	return target, nil
+}
 
+// WorktreeAddAt creates a worktree at an arbitrary absolute targetPath, running
+// git in repoDir. With newBranch, a new branch (branch, or basename(targetPath)
+// if empty) is created with -b.
+func WorktreeAddAt(repoDir, targetPath, branch string, newBranch bool) error {
+	args := []string{"worktree", "add"}
 	if newBranch {
 		b := branch
 		if b == "" {
-			b = name
+			b = filepath.Base(targetPath)
 		}
-		args = append(args, "-b", b, relPath)
+		args = append(args, "-b", b, targetPath)
 	} else if branch != "" {
-		args = append(args, relPath, branch)
+		args = append(args, targetPath, branch)
 	} else {
-		args = append(args, relPath)
+		args = append(args, targetPath)
 	}
+	if _, _, err := Run(context.Background(), repoDir, args...); err != nil {
+		return fmt.Errorf("git worktree add %s: %w", targetPath, err)
+	}
+	return nil
+}
 
-	_, _, err := Run(context.Background(), baseDir, args...)
+// WorktreeEntry is one row of `git worktree list --porcelain`.
+type WorktreeEntry struct {
+	Path     string
+	Branch   string
+	Head     string
+	Prunable bool
+	Bare     bool
+	Detached bool
+}
+
+// WorktreeListPorcelain returns structured worktree entries for the repo at dir.
+func WorktreeListPorcelain(dir string) ([]WorktreeEntry, error) {
+	out, _, err := Run(context.Background(), dir, "worktree", "list", "--porcelain")
 	if err != nil {
-		return "", fmt.Errorf("git worktree add %s: %w", name, err)
+		return nil, err
 	}
-	return target, nil
+	var entries []WorktreeEntry
+	var cur *WorktreeEntry
+	flush := func() {
+		if cur != nil {
+			entries = append(entries, *cur)
+			cur = nil
+		}
+	}
+	for _, line := range strings.Split(out, "\n") {
+		switch {
+		case strings.HasPrefix(line, "worktree "):
+			flush()
+			cur = &WorktreeEntry{Path: strings.TrimPrefix(line, "worktree ")}
+		case cur == nil:
+			// ignore
+		case strings.HasPrefix(line, "HEAD "):
+			cur.Head = strings.TrimPrefix(line, "HEAD ")
+		case strings.HasPrefix(line, "branch "):
+			cur.Branch = strings.TrimPrefix(strings.TrimPrefix(line, "branch "), "refs/heads/")
+		case line == "bare":
+			cur.Bare = true
+		case line == "detached":
+			cur.Detached = true
+		case line == "prunable" || strings.HasPrefix(line, "prunable "):
+			cur.Prunable = true
+		}
+	}
+	flush()
+	return entries, nil
+}
+
+// BranchExists reports whether refs/heads/branch exists in the repo at repoDir.
+func BranchExists(repoDir, branch string) bool {
+	_, _, err := Run(context.Background(), repoDir, "show-ref", "--verify", "--quiet", "refs/heads/"+branch)
+	return err == nil
+}
+
+// WorktreeRepair fixes the administrative links of worktreePath after a move.
+func WorktreeRepair(gitDir, worktreePath string) error {
+	_, _, err := Run(context.Background(), gitDir, "worktree", "repair", worktreePath)
+	return err
 }
 
 // WorktreeRemove removes a worktree by absolute path.
@@ -96,22 +157,6 @@ func WorktreeRemove(path string, force bool) error {
 
 	_, _, err := Run(context.Background(), path, args...)
 	return err
-}
-
-// WorktreeList returns the absolute paths of all linked worktrees for a repo.
-// The bare repo dir is the best place to run this.
-func WorktreeList(dir string) ([]string, error) {
-	out, _, err := Run(context.Background(), dir, "worktree", "list", "--porcelain")
-	if err != nil {
-		return nil, err
-	}
-	var paths []string
-	for _, line := range strings.Split(out, "\n") {
-		if strings.HasPrefix(line, "worktree ") {
-			paths = append(paths, strings.TrimPrefix(line, "worktree "))
-		}
-	}
-	return paths, nil
 }
 
 // CurrentBranch returns the current branch of a worktree, or "" if detached.

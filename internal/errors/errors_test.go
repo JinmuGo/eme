@@ -41,3 +41,18 @@ func TestError_IncludesDetailsWhenWrapped(t *testing.T) {
 		}
 	}
 }
+
+func TestNewCodesAreDistinct(t *testing.T) {
+	codes := []string{
+		CodeSubmoduleRepo, CodeBareRepo, CodeBrokenGit, CodeWorktreeDirty,
+		CodeWorktreeLocked, CodeSubmodulesUnsupported, CodeDirtyTree,
+		CodeMainProtected, CodeParentRepo, CodeInProgressOp,
+	}
+	seen := map[string]bool{}
+	for _, c := range codes {
+		if c == "" || seen[c] {
+			t.Errorf("code %q empty or duplicate", c)
+		}
+		seen[c] = true
+	}
+}

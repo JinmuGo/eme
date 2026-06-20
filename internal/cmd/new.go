@@ -22,6 +22,7 @@ import (
 var (
 	worktreeSession string
 	newDryRun       bool
+	convertFlag     bool
 )
 
 var newCmd = &cobra.Command{
@@ -61,6 +62,7 @@ var newCmd = &cobra.Command{
 func init() {
 	newCmd.Flags().StringVar(&worktreeSession, "worktree", "", "create a worktree in an existing session")
 	newCmd.Flags().BoolVar(&newDryRun, "dry-run", false, "print planned actions without executing")
+	newCmd.Flags().BoolVar(&convertFlag, "convert", false, "restructure an existing clone into a nested-bare layout (backs up first)")
 }
 
 func pickFolder() (string, error) {
@@ -259,11 +261,15 @@ func createProject(folder string) error {
 			"Provide a directory path or pick one from the picker.")
 	}
 
-	if git.HasGitDir(abs) {
-		return errors.New(errors.CodeExistingGitRepo,
-			fmt.Sprintf("%s already contains a git repository.", abs),
-			"eme uses a nested bare layout and cannot adopt an existing git repo.",
-			"Use an empty parent folder, or create the project elsewhere.")
+	c, err := git.Classify(abs)
+	if err != nil {
+		return errors.Wrap(errors.CodeCommandFailed,
+			"Failed to inspect the folder.",
+			"git could not classify the directory.",
+			"Run `eme doctor` to verify git.", err)
+	}
+	if c.Kind != git.KindGreenfield {
+		return routeByClassification(c, convertFlag)
 	}
 
 	if err := requireTmuxServer(); err != nil {
@@ -286,37 +292,8 @@ func createProject(folder string) error {
 	// Compensating transaction state.
 	var createdBare bool
 	var createdWorktree bool
-	var createdSession bool
-	var windowID string
-
-	displayName := session.DisplayName(abs)
-	// Use a clean tmux name (eme-<folder>) and only disambiguate with a numeric
-	// suffix if that name is already taken by a live tmux session or another
-	// eme session.
-	tmuxName := session.UniqueTmuxName(displayName, func(name string) bool {
-		if tmux.SessionExists(name) {
-			return true
-		}
-		for i := range s.Sessions {
-			if s.Sessions[i].TmuxName == name {
-				return true
-			}
-		}
-		return false
-	})
-
-	sess := state.Session{
-		ID:           sessID,
-		DisplayName:  displayName,
-		Root:         abs,
-		TmuxName:     tmuxName,
-		AgentCommand: cfg.Agent.Command,
-	}
 
 	cleanup := func() {
-		if createdSession {
-			_ = tmux.KillSession(sess.TmuxName)
-		}
 		if createdWorktree {
 			_ = git.WorktreeRemove(filepath.Join(abs, "main"), true)
 		}
@@ -365,33 +342,80 @@ func createProject(folder string) error {
 			"Run `eme doctor` to verify git.", err)
 	}
 
-	windowID, err = tmux.NewSession(sess.TmuxName, "main", mainWorktree)
-	if err != nil {
+	if err := registerNestedBareProject(abs); err != nil {
 		cleanup()
+		return err
+	}
+	return nil
+}
+
+// registerNestedBareProject wires up a nested-bare project at root into eme's
+// state and a new tmux session. It is called both from the greenfield path in
+// createProject (after bare+worktree creation) and from convertToNestedBare
+// (after a lossless convert). The tmux session + state write are the only side
+// effects; on failure the caller is responsible for cleaning up the on-disk
+// layout.
+func registerNestedBareProject(root string) error {
+	if err := requireTmuxServer(); err != nil {
+		return err
+	}
+	s, err := loadState()
+	if err != nil {
+		return err
+	}
+	sessID := session.ID(root)
+	if s.SessionByID(sessID) != nil {
+		return errors.New(errors.CodeSessionExists,
+			fmt.Sprintf("session %s is already managed by eme.", session.DisplayName(root)),
+			"The folder is already registered.",
+			"Run `eme` and press Enter to switch to it.")
+	}
+	displayName := session.DisplayName(root)
+	tmuxName := session.UniqueTmuxName(displayName, func(name string) bool {
+		if tmux.SessionExists(name) {
+			return true
+		}
+		for i := range s.Sessions {
+			if s.Sessions[i].TmuxName == name {
+				return true
+			}
+		}
+		return false
+	})
+	mainWorktree := filepath.Join(root, "main")
+	branch, _ := git.CurrentBranch(mainWorktree)
+	if branch == "" || branch == "HEAD" {
+		branch = "main"
+	}
+	sess := state.Session{
+		ID:           sessID,
+		DisplayName:  displayName,
+		Root:         root,
+		TmuxName:     tmuxName,
+		AgentCommand: cfg.Agent.Command,
+		Layout:       state.LayoutNestedBare,
+	}
+	windowID, err := tmux.NewSession(tmuxName, "main", mainWorktree)
+	if err != nil {
 		return errors.Wrap(errors.CodeCommandFailed,
 			"Failed to create tmux session.",
 			"tmux new-session failed.",
 			"Run `eme doctor` to verify tmux.", err)
 	}
-	createdSession = true
-
 	sess.Worktrees = append(sess.Worktrees, state.Worktree{
 		Name:         "main",
-		Branch:       "main",
+		Branch:       branch,
 		Path:         mainWorktree,
 		TmuxWindowID: windowID,
 	})
 	s.AddSession(sess)
-
 	if err := saveState(s); err != nil {
-		cleanup()
+		_ = tmux.KillSession(tmuxName) // compensating: kill the session we just made
 		return err
 	}
-
-	fmt.Printf("Created project %q at %s\n", sess.DisplayName, sess.Root)
-
+	fmt.Printf("Created project %q at %s\n", displayName, root)
 	if tmux.DetectEnv().InsideTmux {
-		_ = tmux.SwitchClient(sess.TmuxName, windowID)
+		_ = tmux.SwitchClient(tmuxName, windowID)
 	}
 	return nil
 }
@@ -414,6 +438,11 @@ func createWorktreePrompt(sessionArg, name string) error {
 			"Provide a name or type one in the prompt.")
 	}
 	return createWorktree(sessionArg, name)
+}
+
+// worktreeTargetPath returns the absolute path for a new worktree named name.
+func worktreeTargetPath(sess *state.Session, name string) string {
+	return filepath.Join(sess.WorktreeDir(), name)
 }
 
 func createWorktree(sessionArg, name string) error {
@@ -445,21 +474,43 @@ func createWorktree(sessionArg, name string) error {
 			"Pick a different name or remove the existing worktree first.")
 	}
 
-	mainW := sess.WorktreeByName("main")
-	if mainW == nil {
+	if sess.WorktreeByName("main") == nil {
 		return errors.New(errors.CodeSessionNotFound,
 			fmt.Sprintf("session %q has no main worktree.", sess.DisplayName),
 			"The main worktree is missing or corrupted.",
 			"Recreate the project with `eme new`.")
 	}
 
-	path, err := git.WorktreeAdd(mainW.Path, name, name, true)
-	if err != nil {
+	target := worktreeTargetPath(sess, name)
+
+	// Leaf-collision: refuse a pre-existing non-empty dir or file (and any
+	// existing dir, for safety).
+	if _, err := os.Stat(target); err == nil {
+		return errors.New(errors.CodeWorktreeExists,
+			fmt.Sprintf("%s already exists.", target),
+			"A file or directory already occupies the worktree path.",
+			"Pick a different worktree name or remove the path first.")
+	}
+
+	// Branch-collision pre-check: without this, `worktree add -b` fails loudly,
+	// but a bare `<name>` would silently hijack an existing branch.
+	if git.BranchExists(sess.MainPath(), name) {
+		return errors.New(errors.CodeBranchExists,
+			fmt.Sprintf("branch %q already exists.", name),
+			"A new worktree would try to create a branch that already exists.",
+			"Pick a different name, or check it out manually.")
+	}
+
+	if err := os.MkdirAll(sess.WorktreeDir(), 0o755); err != nil {
+		return fmt.Errorf("create worktree dir: %w", err)
+	}
+	if err := git.WorktreeAddAt(sess.MainPath(), target, "", true); err != nil {
 		return errors.Wrap(errors.CodeCommandFailed,
 			fmt.Sprintf("Failed to create worktree %q.", name),
 			"git worktree add failed.",
 			"Check git output with --verbose.", err)
 	}
+	path := target
 
 	windowID, err := tmux.NewWindow(sess.TmuxName, name, path)
 	if err != nil {
@@ -494,6 +545,86 @@ func createWorktree(sessionArg, name string) error {
 
 	if tmux.DetectEnv().InsideTmux {
 		_ = tmux.SwitchClient(sess.TmuxName, windowID)
+	}
+	return nil
+}
+
+// routeByClassification handles every non-greenfield folder kind by dispatching
+// to the appropriate action: adopt in-place, switch to an existing session, or
+// refuse with a structured error.
+func routeByClassification(c git.Classification, convert bool) error {
+	switch c.Kind {
+	case git.KindNormalRoot:
+		if convert {
+			return convertToNestedBare(c.TopLevel)
+		}
+		return adoptInPlace(c.TopLevel)
+	case git.KindNestedBare:
+		s, err := loadState()
+		if err != nil {
+			return err
+		}
+		if sess := s.SessionByRoot(c.TopLevel); sess != nil {
+			return switchToSession(sess)
+		}
+		return adoptInPlace(c.TopLevel)
+	case git.KindLinkedWorktree:
+		if c.MainPath == "" {
+			return errors.New(errors.CodeSessionNotFound,
+				"Could not resolve the main worktree for this linked worktree.",
+				"git worktree list returned no main entry.",
+				"Pick the project's main folder instead.")
+		}
+		return adoptInPlace(c.MainPath)
+	case git.KindSubdirectory:
+		return adoptInPlace(c.TopLevel)
+	case git.KindSubmodule:
+		return errors.New(errors.CodeSubmoduleRepo,
+			"That folder is a git submodule.",
+			"A submodule's gitdir lives under its superproject and cannot be adopted standalone.",
+			"Adopt the superproject folder instead.")
+	case git.KindBareRepo:
+		return errors.New(errors.CodeBareRepo,
+			"That folder is a bare git repository.",
+			"eme adopts working clones, not standalone bare repos.",
+			"Pick a normal clone, or create a new project in an empty folder.")
+	case git.KindBrokenGit:
+		return errors.New(errors.CodeBrokenGit,
+			"That folder has a broken .git pointer.",
+			"A .git file or directory exists but git cannot use it.",
+			"Repair or remove the .git pointer, then try again.")
+	default:
+		return errors.New(errors.CodeInvalidFolder,
+			"Unrecognized folder kind.",
+			"eme could not determine how to handle this folder.",
+			"Pick a different folder.")
+	}
+}
+
+// switchToSession switches the current tmux client to the session's main
+// worktree window. If not inside tmux, it attaches to the session instead.
+func switchToSession(sess *state.Session) error {
+	w := sess.WorktreeByName("main")
+	if w == nil {
+		return errors.New(errors.CodeSessionNotFound,
+			fmt.Sprintf("session %q has no main worktree.", sess.DisplayName),
+			"The main worktree is missing or corrupted.",
+			"Recreate the project with `eme new`.")
+	}
+	if tmux.DetectEnv().InsideTmux {
+		if err := tmux.SwitchClient(sess.TmuxName, w.TmuxWindowID); err != nil {
+			return errors.Wrap(errors.CodeCommandFailed,
+				fmt.Sprintf("Could not switch to %s/main.", sess.DisplayName),
+				"tmux switch-client failed.",
+				"Verify the tmux session still exists with `tmux list-sessions`.", err)
+		}
+		return nil
+	}
+	if err := tmux.AttachSession(sess.TmuxName, w.TmuxWindowID); err != nil {
+		return errors.Wrap(errors.CodeCommandFailed,
+			fmt.Sprintf("Could not attach to %s/main.", sess.DisplayName),
+			"tmux attach-session failed.",
+			"Verify the tmux session exists.", err)
 	}
 	return nil
 }

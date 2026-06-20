@@ -8,18 +8,66 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/jinmu/eme/internal/config"
 	"github.com/jinmu/eme/internal/errors"
 	"github.com/jinmu/eme/internal/git"
 	"github.com/jinmu/eme/internal/runner"
+	"github.com/jinmu/eme/internal/state"
 	"github.com/jinmu/eme/internal/tmux"
 )
 
 var doctorCmd = &cobra.Command{
-	Use:   "doctor",
-	Short: "Verify eme environment",
+	Use:   "doctor [folder]",
+	Short: "Verify eme environment, or classify a candidate folder",
+	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if len(args) == 1 {
+			return doctorFolder(args[0])
+		}
 		return runDoctor()
 	},
+}
+
+func kindLabel(k git.Kind) string {
+	switch k {
+	case git.KindGreenfield:
+		return "empty / greenfield"
+	case git.KindNormalRoot:
+		return "normal git repo (adoptable in place)"
+	case git.KindNestedBare:
+		return "existing eme nested-bare project"
+	case git.KindLinkedWorktree:
+		return "linked worktree (resolves to its main)"
+	case git.KindSubmodule:
+		return "git submodule (not adoptable)"
+	case git.KindBareRepo:
+		return "bare repository (not adoptable)"
+	case git.KindSubdirectory:
+		return "subdirectory of a repo (resolves to top level)"
+	case git.KindBrokenGit:
+		return "broken .git pointer"
+	default:
+		return "unknown"
+	}
+}
+
+func doctorFolder(folder string) error {
+	abs, err := filepath.Abs(folder)
+	if err != nil {
+		return err
+	}
+	c, err := git.Classify(abs)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("folder: %s\nkind:   %s\n", abs, kindLabel(c.Kind))
+	if c.Kind == git.KindNormalRoot {
+		wt, derr := config.WorktreeDirFor(cfg.Worktree.DirTemplate, c.TopLevel)
+		if derr == nil {
+			fmt.Printf("adopt:  worktrees would go to %s\n", wt)
+		}
+	}
+	return nil
 }
 
 func runDoctor() error {
@@ -52,7 +100,50 @@ func runDoctor() error {
 			"One or more environment checks failed.",
 			"Fix the failed checks above and run `eme doctor` again.")
 	}
+
+	// Registered-project audit: non-fatal, additive.
+	runRegisteredProjectAudit()
+
 	return nil
+}
+
+// runRegisteredProjectAudit loads the persisted state and checks each in-place
+// session for a missing root directory and prunable/missing worktrees.
+// All findings are printed as warnings; errors never propagate to the caller.
+func runRegisteredProjectAudit() {
+	st, err := loadState()
+	if err != nil {
+		fmt.Printf("[warn] registered-project audit: could not load state: %s\n", err)
+		return
+	}
+	if len(st.Sessions) == 0 {
+		return
+	}
+	fmt.Println()
+	fmt.Println("--- registered project audit ---")
+	for i := range st.Sessions {
+		sess := &st.Sessions[i]
+		if sess.Layout != state.LayoutInPlace {
+			continue
+		}
+		if _, serr := os.Stat(sess.Root); serr != nil {
+			fmt.Printf("[warn] session %s: root %s missing or inaccessible: %s\n",
+				sess.DisplayName, sess.Root, serr)
+			continue
+		}
+		entries, lerr := git.WorktreeListPorcelain(sess.MainPath())
+		if lerr != nil {
+			fmt.Printf("[warn] session %s: could not list worktrees: %s\n",
+				sess.DisplayName, lerr)
+			continue
+		}
+		for _, wt := range entries {
+			if wt.Prunable {
+				fmt.Printf("[warn] session %s: worktree %s is prunable (missing working tree)\n",
+					sess.DisplayName, wt.Path)
+			}
+		}
+	}
 }
 
 func checkTmuxInstalled() (bool, string) {

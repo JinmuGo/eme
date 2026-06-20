@@ -66,3 +66,45 @@ func TestSessionByRoot(t *testing.T) {
 		t.Errorf("expected session b, got %+v", got)
 	}
 }
+
+func TestSession_DerivedPaths_NestedBare(t *testing.T) {
+	s := Session{Root: "/p/myapp", Layout: LayoutNestedBare}
+	if got := s.MainPath(); got != "/p/myapp/main" {
+		t.Errorf("MainPath = %q", got)
+	}
+	if got := s.GitDir(); got != "/p/myapp/.bare" {
+		t.Errorf("GitDir = %q", got)
+	}
+	if got := s.WorktreeDir(); got != "/p/myapp" {
+		t.Errorf("WorktreeDir = %q", got)
+	}
+}
+
+func TestSession_DerivedPaths_InPlace(t *testing.T) {
+	s := Session{Root: "/p/myapp", Layout: LayoutInPlace}
+	if got := s.MainPath(); got != "/p/myapp" {
+		t.Errorf("MainPath = %q", got)
+	}
+	if got := s.GitDir(); got != "/p/myapp/.git" {
+		t.Errorf("GitDir = %q", got)
+	}
+	if got := s.WorktreeDir(); got != "/p/myapp.worktrees" {
+		t.Errorf("WorktreeDir = %q", got)
+	}
+}
+
+func TestLoad_EmptyLayoutDefaultsToNestedBare(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	// version 1, no layout key — simulates an existing user's state.
+	if err := os.WriteFile(path, []byte(`{"version":1,"sessions":[{"id":"x","root":"/p/x"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if s.Sessions[0].Layout != LayoutNestedBare {
+		t.Errorf("Layout = %q, want nested-bare", s.Sessions[0].Layout)
+	}
+}

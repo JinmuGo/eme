@@ -4,7 +4,45 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/jinmu/eme/internal/errors"
+	"github.com/jinmu/eme/internal/git"
+	"github.com/jinmu/eme/internal/state"
 )
+
+func TestRouteByClassification(t *testing.T) {
+	cases := []struct {
+		kind    git.Kind
+		wantErr string // expected error code
+	}{
+		{git.KindSubmodule, errors.CodeSubmoduleRepo},
+		{git.KindBareRepo, errors.CodeBareRepo},
+		{git.KindBrokenGit, errors.CodeBrokenGit},
+	}
+	for _, tc := range cases {
+		err := routeByClassification(git.Classification{Kind: tc.kind, TopLevel: "/x"}, false)
+		if e := errors.As(err); e == nil || e.Code != tc.wantErr {
+			t.Errorf("kind %v: got %v, want code %s", tc.kind, err, tc.wantErr)
+		}
+	}
+}
+
+func TestWorktreeTargetPath(t *testing.T) {
+	nested := &state.Session{Root: "/p/app", Layout: state.LayoutNestedBare}
+	if got := worktreeTargetPath(nested, "feat"); got != "/p/app/feat" {
+		t.Errorf("nested target = %q", got)
+	}
+	inplace := &state.Session{Root: "/p/app", Layout: state.LayoutInPlace}
+	if got := worktreeTargetPath(inplace, "feat"); got != "/p/app.worktrees/feat" {
+		t.Errorf("in-place target = %q", got)
+	}
+}
+
+func TestConvertFlagRegistered(t *testing.T) {
+	if newCmd.Flags().Lookup("convert") == nil {
+		t.Errorf("--convert flag not registered on newCmd")
+	}
+}
 
 func TestScanFolders_DeduplicatesAndSkipsHidden(t *testing.T) {
 	home := t.TempDir()

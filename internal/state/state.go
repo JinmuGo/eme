@@ -13,6 +13,11 @@ import (
 // Version is the current state file schema version.
 const Version = 1
 
+const (
+	LayoutNestedBare = "nested-bare"
+	LayoutInPlace    = "in-place"
+)
+
 // Worktree represents one linked worktree inside a project.
 type Worktree struct {
 	Name                 string `json:"name"`
@@ -26,12 +31,14 @@ type Worktree struct {
 
 // Session represents a project folder mapped to a tmux session.
 type Session struct {
-	ID           string     `json:"id"`
-	DisplayName  string     `json:"display_name"`
-	Root         string     `json:"root"`
-	TmuxName     string     `json:"tmux_name"`
-	AgentCommand string     `json:"agent_command,omitempty"`
-	Worktrees    []Worktree `json:"worktrees"`
+	ID                  string     `json:"id"`
+	DisplayName         string     `json:"display_name"`
+	Root                string     `json:"root"`
+	TmuxName            string     `json:"tmux_name"`
+	AgentCommand        string     `json:"agent_command,omitempty"`
+	Worktrees           []Worktree `json:"worktrees"`
+	Layout              string     `json:"layout,omitempty"`
+	WorktreeDirOverride string     `json:"worktree_dir,omitempty"`
 }
 
 // State is the persisted runtime state for eme.
@@ -69,6 +76,11 @@ func Load(path string) (*State, error) {
 	}
 	if s.Version != Version {
 		return nil, fmt.Errorf("state file version %d is not supported by this version of eme (expected %d). Please delete or migrate %s", s.Version, Version, path)
+	}
+	for i := range s.Sessions {
+		if s.Sessions[i].Layout == "" {
+			s.Sessions[i].Layout = LayoutNestedBare
+		}
 	}
 	return &s, nil
 }
@@ -132,6 +144,36 @@ func (s *Session) WorktreeByName(name string) *Worktree {
 		}
 	}
 	return nil
+}
+
+// MainPath returns the working directory of the project's main worktree.
+func (s *Session) MainPath() string {
+	if s.Layout == LayoutInPlace {
+		return s.Root
+	}
+	return filepath.Join(s.Root, "main")
+}
+
+// GitDir returns the canonical git directory for the project.
+// It is part of the derived-path API (alongside MainPath and WorktreeDir);
+// retained for completeness and git-dir-targeted operations even though no
+// caller reads it today.
+func (s *Session) GitDir() string {
+	if s.Layout == LayoutInPlace {
+		return filepath.Join(s.Root, ".git")
+	}
+	return filepath.Join(s.Root, ".bare")
+}
+
+// WorktreeDir returns the parent directory under which new worktrees are created.
+func (s *Session) WorktreeDir() string {
+	if s.Layout == LayoutInPlace {
+		if s.WorktreeDirOverride != "" {
+			return s.WorktreeDirOverride
+		}
+		return s.Root + ".worktrees"
+	}
+	return s.Root
 }
 
 // AddSession appends a session.
