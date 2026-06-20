@@ -31,8 +31,18 @@ func captureSendKeys(t *testing.T, target, line *string) {
 	t.Cleanup(func() { sendKeys = prev })
 }
 
-func TestLaunchAgentCommand_SendsBareCommand(t *testing.T) {
+// tempState points statePath at a throwaway state file for the duration of the
+// test and restores it afterward, so saveState writes never escape the test and
+// later tests in the same package never inherit a stale path.
+func tempState(t *testing.T) {
+	t.Helper()
+	prev := statePath
 	statePath = filepath.Join(t.TempDir(), "state.json")
+	t.Cleanup(func() { statePath = prev })
+}
+
+func TestLaunchAgentCommand_SendsBareCommand(t *testing.T) {
+	tempState(t)
 	stubWhich(t, "claude")
 	var gotTarget, gotLine string
 	captureSendKeys(t, &gotTarget, &gotLine)
