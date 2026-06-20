@@ -27,6 +27,21 @@ func TestRouteByClassification(t *testing.T) {
 	}
 }
 
+func TestCreateProject_EmptyFolderRejected(t *testing.T) {
+	// Regression: a cancelled folder picker used to reach createProject with an
+	// empty path. filepath.Abs("") resolves to the cwd, so createProject would
+	// classify the current directory and adopt/switch to it — the "session jump
+	// on Ctrl+C" bug. The guard must reject empty/whitespace before any side
+	// effect (no git, tmux, or state access).
+	for _, in := range []string{"", "   ", "\t"} {
+		err := createProject(in)
+		e := errors.As(err)
+		if e == nil || e.Code != errors.CodeInvalidFolder {
+			t.Errorf("createProject(%q) = %v, want code %s", in, err, errors.CodeInvalidFolder)
+		}
+	}
+}
+
 func TestWorktreeTargetPath(t *testing.T) {
 	nested := &state.Session{Root: "/p/app", Layout: state.LayoutNestedBare}
 	if got := worktreeTargetPath(nested, "feat"); got != "/p/app/feat" {

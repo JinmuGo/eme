@@ -42,14 +42,21 @@ var newCmd = &cobra.Command{
 			return createWorktreePrompt(worktreeSession, name)
 		}
 		var folder string
-		var err error
 		if len(args) == 1 {
 			folder = args[0]
 		} else {
-			folder, err = pickFolder()
+			picked, cancelled, err := pickFolder()
 			if err != nil {
 				return err
 			}
+			if cancelled {
+				// The user dismissed the picker (Ctrl+C/Esc) without choosing.
+				// Returning an empty path here would let createProject resolve it
+				// to the current directory via filepath.Abs and adopt/switch to
+				// whatever repo the cwd happens to be.
+				return nil
+			}
+			folder = picked
 		}
 		if newDryRun {
 			fmt.Printf("[dry-run] would create project at %s\n", folder)
@@ -65,19 +72,23 @@ func init() {
 	newCmd.Flags().BoolVar(&convertFlag, "convert", false, "restructure an existing clone into a nested-bare layout (backs up first)")
 }
 
-func pickFolder() (string, error) {
+// pickFolder runs the interactive folder picker. cancelled is true when the
+// user dismissed the picker (Ctrl+C/Esc) without selecting; callers must treat
+// that as "do nothing", never as an empty-path selection (filepath.Abs("")
+// resolves to the current directory).
+func pickFolder() (folder string, cancelled bool, err error) {
 	items, err := scanFolders()
 	if err != nil {
-		return "", fmt.Errorf("scan folders: %w", err)
+		return "", false, fmt.Errorf("scan folders: %w", err)
 	}
 	picker := tui.NewFolderPicker(items)
 	if _, err := tea.NewProgram(picker).Run(); err != nil {
-		return "", fmt.Errorf("picker: %w", err)
+		return "", false, fmt.Errorf("picker: %w", err)
 	}
 	if picker.Cancelled() {
-		return "", nil
+		return "", true, nil
 	}
-	return picker.Selected(), nil
+	return picker.Selected(), false, nil
 }
 
 // maxScanFolders caps how many folders the picker collects, bounding work on
@@ -241,6 +252,16 @@ func isProjectBoundary(dir string) bool {
 }
 
 func createProject(folder string) error {
+	// Defense in depth: an empty path resolves to the current directory via
+	// filepath.Abs, which would silently adopt or switch to whatever repo the
+	// cwd happens to be. A cancelled picker must never reach here, but guard
+	// regardless so no future caller can trigger that jump.
+	if strings.TrimSpace(folder) == "" {
+		return errors.New(errors.CodeInvalidFolder,
+			"No folder selected.",
+			"An empty folder path resolves to the current directory.",
+			"Pick a folder from the picker or run `eme new <folder>`.")
+	}
 	abs, err := filepath.Abs(folder)
 	if err != nil {
 		return fmt.Errorf("resolve path: %w", err)
