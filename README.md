@@ -36,7 +36,7 @@ tmux source-file ~/.tmux.conf
 2. Press `n` and pick a project folder.
 3. `eme` creates `<folder>/main`, starts a tmux session, and opens the dashboard again.
 4. Press `c`, type a worktree name, and press `Enter`.
-5. Press `a` to launch your AI agent in that worktree.
+5. Press `a` to launch your AI agent in that worktree (or `A` to pick which one).
 
 ## Commands
 
@@ -56,10 +56,17 @@ eme --version      # print version
 
 ```toml
 [agent]
-command = "opencode"
+command = "opencode"   # default highlighted in the agent picker
+
+# Optional: add or override catalog entries.
+[[agents]]
+name = "claude-resume"
+command = "claude --resume"
 ```
 
 You can override the agent per folder or per worktree from the dashboard.
+
+When you run `eme new`, eme shows an agent picker (claude, codex, gemini, opencode, plus anything you add) listing what's installed on your PATH; your choice launches in `main` and becomes the project default. Press `a` on a worktree to toggle its agent, or `A` to pick a different one.
 
 ## Requirements
 

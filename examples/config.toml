@@ -3,5 +3,15 @@
 [agent]
 command = "opencode"
 
+# eme ships a built-in catalog of agents (claude, codex, gemini, opencode) and
+# shows the ones installed on your PATH when you create a project (eme new) or
+# press A on a worktree. agent.command is the default highlighted in the picker.
+
+# Add or override catalog entries here. A matching name overrides the built-in
+# command; a new name is appended.
+# [[agents]]
+# name = "claude-resume"
+# command = "claude --resume"
+
 # You can override the agent per folder or per worktree from the dashboard.
 # Global default is used when no override is set.

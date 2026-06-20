@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Agent catalog: `eme new` shows an agent picker (built-in claude, codex, gemini, opencode, plus any `[[agents]]` you add) listing what's installed on your PATH; your choice launches in `main` and becomes the project default. Press `a` on a worktree to toggle its agent, or `A` to pick a different one (`eme agent --pick`). Override or extend the catalog with `[[agents]]` entries in config.
 - Adopt an existing (non-bare) git clone in place: `eme new <existing-clone>` registers the clone as a project without restructuring it. New worktrees are created in a sibling `<repo>.worktrees/` container, and the adopted clone's directory is never deleted by `eme kill`.
 - `eme forget <session>` removes a project from eme without touching disk or tmux — the disk-safe way to stop managing an adopted clone.
 - `[worktree] dir_template` config (default `{repo}.worktrees`) controls where in-place worktrees are created; the template must resolve to a sibling of the repo.
@@ -40,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `eme agent` now launches the configured agent as a bare command in the worktree's pane (whose cwd is already the worktree) instead of appending the worktree path as an argument. The trailing path only suited `opencode`; claude/codex/gemini now start correctly.
 - Dashboard `d` (kill) now works: it confirms, then removes the session. Previously it launched `eme kill` without the required `--force` and silently did nothing.
 - Cancelling the folder picker (Ctrl+C/Esc) in `eme new` no longer adopts the current directory and jumps to a stray tmux session — it simply returns.
 - A standalone bare git repository is now classified correctly (bare, out of scope) instead of as a subdirectory, so `eme doctor`/`eme new` report it accurately.
@@ -48,5 +50,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Planned
 
 - Full worktree-level agent status polling in the dashboard.
-- Per-folder and per-worktree agent command overrides exposed through the UI.
 - Prebuilt binaries and Homebrew formula.
