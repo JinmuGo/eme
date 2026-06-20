@@ -25,7 +25,11 @@ const (
 type Classification struct {
 	Kind     Kind
 	TopLevel string // canonical, for NormalRoot/Subdirectory/LinkedWorktree
-	MainPath string // canonical main worktree, set for LinkedWorktree
+	// MainPath is the canonical path of the main worktree, populated for
+	// KindLinkedWorktree. An empty MainPath means the main worktree could not
+	// be resolved (e.g. the porcelain output was missing); callers must guard
+	// against it before using this value.
+	MainPath string
 }
 
 // strippedGitEnvVars are removed from the detection environment so an inherited
@@ -60,6 +64,8 @@ func probe(dir string, args ...string) (string, error) {
 }
 
 // Classify determines how eme should treat the picked folder dir.
+// For KindLinkedWorktree, Classification.MainPath may be empty if the main
+// worktree could not be resolved; callers must guard against an empty MainPath.
 func Classify(dir string) (Classification, error) {
 	canon, err := filepath.EvalSymlinks(dir)
 	if err != nil {

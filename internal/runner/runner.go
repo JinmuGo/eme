@@ -3,6 +3,7 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -34,12 +35,14 @@ func (r *defaultRunner) RunEnv(ctx context.Context, env []string, name string, a
 	if env != nil {
 		cmd.Env = env
 	}
-	out, err := cmd.CombinedOutput()
-	s := string(out)
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	err := cmd.Run()
 	if err != nil {
-		return s, s, fmt.Errorf("%s %v: %w", name, args, err)
+		return outBuf.String(), errBuf.String(), fmt.Errorf("%s %v: %w", name, args, err)
 	}
-	return s, s, nil
+	return outBuf.String(), errBuf.String(), nil
 }
 
 func (r *defaultRunner) Run(ctx context.Context, name string, args ...string) (string, string, error) {
