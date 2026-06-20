@@ -91,12 +91,7 @@ func defaultAgentName(catalog []config.AgentSpec, command string) string {
 // on a concrete selection, calls apply(command), persists state, and launches it
 // in w. "none", cancel, or an empty catalog leave everything untouched.
 func chooseAndLaunchAgent(s *state.State, sess *state.Session, w *state.Worktree, defaultCmd string, apply func(command string)) error {
-	var catalog []config.AgentSpec
-	if cfg != nil {
-		catalog = cfg.Catalog()
-	} else {
-		catalog = config.BuiltinAgents()
-	}
+	catalog := cfg.Catalog()
 	items := agentItems(catalog)
 	if countInstalled(items) == 0 {
 		fmt.Println("No agents found on PATH. Install claude, codex, gemini, or opencode, or set agent.command in ~/.config/eme/config.toml.")

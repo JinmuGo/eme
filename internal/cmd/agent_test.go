@@ -44,6 +44,17 @@ func tempState(t *testing.T) {
 	t.Cleanup(func() { statePath = prev })
 }
 
+// tempCfg installs a default config in the package global for the duration of
+// the test and restores it on cleanup, so helpers that read cfg (e.g.
+// chooseAndLaunchAgent → cfg.Catalog()) see production-shaped config instead of
+// a nil global.
+func tempCfg(t *testing.T) {
+	t.Helper()
+	prev := cfg
+	cfg = config.Default()
+	t.Cleanup(func() { cfg = prev })
+}
+
 func TestAgentItems_MarksInstalledAndAppendsNone(t *testing.T) {
 	prev := lookPath
 	lookPath = func(bin string) (string, error) {
@@ -74,6 +85,7 @@ func TestAgentItems_MarksInstalledAndAppendsNone(t *testing.T) {
 }
 
 func TestChooseAndLaunchAgent_AppliesAndLaunchesOnSelection(t *testing.T) {
+	tempCfg(t)
 	tempState(t)
 	stubWhich(t, "claude")
 	var line string
@@ -107,6 +119,7 @@ func TestChooseAndLaunchAgent_AppliesAndLaunchesOnSelection(t *testing.T) {
 }
 
 func TestChooseAndLaunchAgent_NoneDoesNotApplyOrLaunch(t *testing.T) {
+	tempCfg(t)
 	tempState(t)
 	var line string
 	var target string
@@ -138,6 +151,7 @@ func TestChooseAndLaunchAgent_NoneDoesNotApplyOrLaunch(t *testing.T) {
 }
 
 func TestChooseAndLaunchAgent_SkipsPickerWhenNothingInstalled(t *testing.T) {
+	tempCfg(t)
 	prevLook := lookPath
 	lookPath = func(bin string) (string, error) { return "", fmt.Errorf("not found") }
 	t.Cleanup(func() { lookPath = prevLook })
