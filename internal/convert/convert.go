@@ -55,6 +55,12 @@ func CheckPreconditions(root string, opts Options) error {
 // Convert turns the normal clone at root into the nested-bare layout, returning
 // the path of the retained backup. The original is read-only until the final swap.
 func Convert(root string, opts Options) (string, error) {
+	if opts.Stash {
+		return "", errors.New(errors.CodeCommandFailed,
+			"Converting with --stash is not implemented yet.",
+			"Auto-stashing uncommitted changes during conversion is not available.",
+			"Commit or stash your changes manually, then retry without --stash.")
+	}
 	if err := CheckPreconditions(root, opts); err != nil {
 		return "", err
 	}
@@ -100,7 +106,7 @@ func Convert(root string, opts Options) (string, error) {
 		cleanup()
 		return "", wrapConvert("mint worktree", err)
 	}
-	if err := moveWorkingTree(root, mainTmp, opts); err != nil {
+	if err := moveWorkingTree(root, mainTmp); err != nil {
 		cleanup()
 		return "", wrapConvert("move working tree", err)
 	}
@@ -127,16 +133,12 @@ func Convert(root string, opts Options) (string, error) {
 
 	// 7. repair stale worktree paths (gitfile + bare admin path).
 	if err := git.WorktreeRepair(filepath.Join(root, ".bare"), filepath.Join(root, "main")); err != nil {
-		_ = os.RemoveAll(root)
-		_ = os.Rename(backup, root)
-		return "", wrapConvert("repair", err)
+		return "", restoreBackup(root, backup, "repair", err)
 	}
 
 	// 8. post-swap re-verify.
 	if out, _, err := git.Run(context.Background(), filepath.Join(root, "main"), "status", "--porcelain"); err != nil || strings.TrimSpace(out) != "" {
-		_ = os.RemoveAll(root)
-		_ = os.Rename(backup, root)
-		return "", wrapConvert("post-swap verify", fmt.Errorf("status: %s err: %v", out, err))
+		return "", restoreBackup(root, backup, "post-swap verify", fmt.Errorf("status: %s err: %v", out, err))
 	}
 	return backup, nil
 }
@@ -149,18 +151,23 @@ func runCmd(name string, args ...string) error {
 	return nil
 }
 
-func moveWorkingTree(src, dst string, opts Options) error {
+func moveWorkingTree(src, dst string) error {
 	entries, err := os.ReadDir(src)
 	if err != nil {
 		return err
 	}
+	var moved []string
 	for _, e := range entries {
 		if e.Name() == ".git" {
 			continue // leave the original's .git in place (read-only source)
 		}
 		if err := os.Rename(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
+			for _, n := range moved { // restore src to its original state
+				_ = os.Rename(filepath.Join(dst, n), filepath.Join(src, n))
+			}
 			return err
 		}
+		moved = append(moved, e.Name())
 	}
 	return nil
 }
@@ -168,6 +175,20 @@ func moveWorkingTree(src, dst string, opts Options) error {
 func exists(p string) bool { _, err := os.Stat(p); return err == nil }
 
 func nonce() string { return fmt.Sprintf("%d", time.Now().UnixNano()) }
+
+// restoreBackup rolls the swap back after a post-swap failure. If the backup
+// cannot be moved back into place, it returns an error that names the backup
+// path so the user can recover manually.
+func restoreBackup(root, backup, step string, cause error) error {
+	_ = os.RemoveAll(root)
+	if err := os.Rename(backup, root); err != nil {
+		return errors.Wrap(errors.CodeCommandFailed,
+			"Convert failed at: "+step+", and automatic rollback also failed.",
+			fmt.Sprintf("Your original repository is preserved at %s but could not be moved back to %s automatically.", backup, root),
+			"Restore it manually: `mv "+backup+" "+root+"`.", cause)
+	}
+	return wrapConvert(step, cause)
+}
 
 func wrapConvert(step string, err error) error {
 	return errors.Wrap(errors.CodeCommandFailed,

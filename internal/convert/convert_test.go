@@ -10,6 +10,25 @@ import (
 	"github.com/jinmu/eme/internal/runner"
 )
 
+func TestConvert_StashNotImplemented(t *testing.T) {
+	dir := t.TempDir()
+	_, err := Convert(dir, Options{Stash: true})
+	if err == nil {
+		t.Fatal("expected an error for --stash, got nil")
+	}
+	if e := errors.As(err); e == nil {
+		t.Fatalf("expected *errors.EmeError, got %T: %v", err, err)
+	}
+	// Must not have mutated disk: no .bare directory created.
+	if _, statErr := os.Stat(filepath.Join(dir, ".bare")); statErr == nil {
+		t.Error(".bare was created — stash guard did not fire before disk mutations")
+	}
+	// No temp convert directory created.
+	if _, statErr := os.Stat(dir + ".eme-convert"); statErr == nil {
+		t.Error(".eme-convert temp was created — stash guard did not fire before disk mutations")
+	}
+}
+
 func TestCheckPreconditions_RefusesDirtyTree(t *testing.T) {
 	m := runner.NewMock()
 	m.Set("git", []string{"-C", "/repo", "status", "--porcelain"}, " M file.go\n", "", nil)
