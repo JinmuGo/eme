@@ -58,5 +58,21 @@ func worktreeExists(sess state.Session, w state.Worktree) bool {
 	if _, err := git.TopLevel(w.Path); err != nil {
 		return false
 	}
+	// Check git worktree is not prunable.
+	entries, err := git.WorktreeListPorcelain(sess.MainPath())
+	if err == nil && prunablePaths(entries)[w.Path] {
+		return false
+	}
 	return true
+}
+
+// prunablePaths returns the set of worktree paths git reports as prunable.
+func prunablePaths(entries []git.WorktreeEntry) map[string]bool {
+	out := make(map[string]bool)
+	for _, e := range entries {
+		if e.Prunable {
+			out[e.Path] = true
+		}
+	}
+	return out
 }
