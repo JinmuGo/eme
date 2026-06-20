@@ -3,3 +3,6 @@
 
 # subagent-driven-development scratch
 .superpowers/
+
+# local docs (untracked)
+/docs/
