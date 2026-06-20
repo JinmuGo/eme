@@ -38,6 +38,12 @@ func TestWorktreeTargetPath(t *testing.T) {
 	}
 }
 
+func TestConvertFlagRegistered(t *testing.T) {
+	if newCmd.Flags().Lookup("convert") == nil {
+		t.Errorf("--convert flag not registered on newCmd")
+	}
+}
+
 func TestScanFolders_DeduplicatesAndSkipsHidden(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

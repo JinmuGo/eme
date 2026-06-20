@@ -62,6 +62,7 @@ var newCmd = &cobra.Command{
 func init() {
 	newCmd.Flags().StringVar(&worktreeSession, "worktree", "", "create a worktree in an existing session")
 	newCmd.Flags().BoolVar(&newDryRun, "dry-run", false, "print planned actions without executing")
+	newCmd.Flags().BoolVar(&convertFlag, "convert", false, "restructure an existing clone into a nested-bare layout (backs up first)")
 }
 
 func pickFolder() (string, error) {
@@ -291,37 +292,8 @@ func createProject(folder string) error {
 	// Compensating transaction state.
 	var createdBare bool
 	var createdWorktree bool
-	var createdSession bool
-	var windowID string
-
-	displayName := session.DisplayName(abs)
-	// Use a clean tmux name (eme-<folder>) and only disambiguate with a numeric
-	// suffix if that name is already taken by a live tmux session or another
-	// eme session.
-	tmuxName := session.UniqueTmuxName(displayName, func(name string) bool {
-		if tmux.SessionExists(name) {
-			return true
-		}
-		for i := range s.Sessions {
-			if s.Sessions[i].TmuxName == name {
-				return true
-			}
-		}
-		return false
-	})
-
-	sess := state.Session{
-		ID:           sessID,
-		DisplayName:  displayName,
-		Root:         abs,
-		TmuxName:     tmuxName,
-		AgentCommand: cfg.Agent.Command,
-	}
 
 	cleanup := func() {
-		if createdSession {
-			_ = tmux.KillSession(sess.TmuxName)
-		}
 		if createdWorktree {
 			_ = git.WorktreeRemove(filepath.Join(abs, "main"), true)
 		}
@@ -370,33 +342,80 @@ func createProject(folder string) error {
 			"Run `eme doctor` to verify git.", err)
 	}
 
-	windowID, err = tmux.NewSession(sess.TmuxName, "main", mainWorktree)
-	if err != nil {
+	if err := registerNestedBareProject(abs); err != nil {
 		cleanup()
+		return err
+	}
+	return nil
+}
+
+// registerNestedBareProject wires up a nested-bare project at root into eme's
+// state and a new tmux session. It is called both from the greenfield path in
+// createProject (after bare+worktree creation) and from convertToNestedBare
+// (after a lossless convert). The tmux session + state write are the only side
+// effects; on failure the caller is responsible for cleaning up the on-disk
+// layout.
+func registerNestedBareProject(root string) error {
+	if err := requireTmuxServer(); err != nil {
+		return err
+	}
+	s, err := loadState()
+	if err != nil {
+		return err
+	}
+	sessID := session.ID(root)
+	if s.SessionByID(sessID) != nil {
+		return errors.New(errors.CodeSessionExists,
+			fmt.Sprintf("session %s is already managed by eme.", session.DisplayName(root)),
+			"The folder is already registered.",
+			"Run `eme` and press Enter to switch to it.")
+	}
+	displayName := session.DisplayName(root)
+	tmuxName := session.UniqueTmuxName(displayName, func(name string) bool {
+		if tmux.SessionExists(name) {
+			return true
+		}
+		for i := range s.Sessions {
+			if s.Sessions[i].TmuxName == name {
+				return true
+			}
+		}
+		return false
+	})
+	mainWorktree := filepath.Join(root, "main")
+	branch, _ := git.CurrentBranch(mainWorktree)
+	if branch == "" || branch == "HEAD" {
+		branch = "main"
+	}
+	sess := state.Session{
+		ID:           sessID,
+		DisplayName:  displayName,
+		Root:         root,
+		TmuxName:     tmuxName,
+		AgentCommand: cfg.Agent.Command,
+		Layout:       state.LayoutNestedBare,
+	}
+	windowID, err := tmux.NewSession(tmuxName, "main", mainWorktree)
+	if err != nil {
 		return errors.Wrap(errors.CodeCommandFailed,
 			"Failed to create tmux session.",
 			"tmux new-session failed.",
 			"Run `eme doctor` to verify tmux.", err)
 	}
-	createdSession = true
-
 	sess.Worktrees = append(sess.Worktrees, state.Worktree{
 		Name:         "main",
-		Branch:       "main",
+		Branch:       branch,
 		Path:         mainWorktree,
 		TmuxWindowID: windowID,
 	})
 	s.AddSession(sess)
-
 	if err := saveState(s); err != nil {
-		cleanup()
+		_ = tmux.KillSession(tmuxName) // compensating: kill the session we just made
 		return err
 	}
-
-	fmt.Printf("Created project %q at %s\n", sess.DisplayName, sess.Root)
-
+	fmt.Printf("Created project %q at %s\n", displayName, root)
 	if tmux.DetectEnv().InsideTmux {
-		_ = tmux.SwitchClient(sess.TmuxName, windowID)
+		_ = tmux.SwitchClient(tmuxName, windowID)
 	}
 	return nil
 }
