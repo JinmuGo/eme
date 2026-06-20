@@ -13,6 +13,7 @@ import (
 	"github.com/jinmu/eme/internal/runner"
 	"github.com/jinmu/eme/internal/state"
 	"github.com/jinmu/eme/internal/tmux"
+	"github.com/jinmu/eme/internal/tui/theme"
 )
 
 var (
@@ -47,6 +48,10 @@ Run inside a tmux popup for the best experience.`,
 		// server and switch-client moves your real client. Setting a socket
 		// (config or EME_TMUX_SOCKET) instead pins eme to one dedicated server.
 		tmux.Socket = resolveTmuxSocket(cfg)
+		// Honor EME_THEME=light|dark before any TUI renders. Inside a tmux popup
+		// the terminal can't answer the OSC background query, so this is how
+		// light-terminal users get the light color variants.
+		theme.ApplyBackground()
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {

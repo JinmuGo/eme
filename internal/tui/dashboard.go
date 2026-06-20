@@ -9,36 +9,41 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/jinmu/eme/internal/tui/theme"
 )
 
-// titleStyle, cursorStyle, mutedStyle, errorStyle, helpStyle are SHARED with
-// picker.go / input.go (same package) and MUST remain defined here — do not drop
-// them when rewriting this file.
+// Styles map DESIGN.md roles to lipgloss. titleStyle, cursorStyle, mutedStyle,
+// errorStyle, helpStyle are SHARED with picker.go / input.go / agentpicker.go
+// (same package) and MUST remain defined here — do not drop them.
+//
+// One rule governs the palette: amber (theme.Beacon) is reserved for "the chosen
+// one." Everything else is neutral; only the beacon and danger spend saturation.
 var (
-	titleStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4"))
-	cursorStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#04B575"))
-	mutedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
-	errorStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
-	helpStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
+	titleStyle  = lipgloss.NewStyle().Bold(true).Foreground(theme.Text) // wordmark stays neutral in-TUI; amber is the beacon
+	cursorStyle = lipgloss.NewStyle().Bold(true).Foreground(theme.Text)
+	mutedStyle  = lipgloss.NewStyle().Foreground(theme.Muted)
+	errorStyle  = lipgloss.NewStyle().Foreground(theme.Danger)
+	helpStyle   = lipgloss.NewStyle().Foreground(theme.Muted)
 
-	rhymeStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#7D56F4"))
-	needsYouStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#E5C07B"))
-	sessionStyle  = lipgloss.NewStyle().Bold(true)
-	rootStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
-	branchStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
-	addStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575"))
-	delStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
-	agentStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#56B6C2"))
+	textStyle     = lipgloss.NewStyle().Foreground(theme.Text)
+	rhymeStyle    = lipgloss.NewStyle().Foreground(theme.Muted)
+	needsYouStyle = lipgloss.NewStyle().Bold(true).Foreground(theme.Beacon)
+	sessionStyle  = lipgloss.NewStyle().Bold(true).Foreground(theme.Text)
+	rootStyle     = lipgloss.NewStyle().Foreground(theme.Muted)
+	branchStyle   = lipgloss.NewStyle().Foreground(theme.Muted)
+	addStyle      = lipgloss.NewStyle().Foreground(theme.Muted) // an addition is not an alert
+	delStyle      = lipgloss.NewStyle().Foreground(theme.Danger)
+	agentStyle    = lipgloss.NewStyle().Foreground(theme.Muted)
 
-	// selectedStyle is the full-width highlight bar for the row under the cursor.
-	selectedStyle = lipgloss.NewStyle().
-			Background(lipgloss.Color("#3B4252")).
-			Foreground(lipgloss.Color("#ECEFF4")).
-			Bold(true)
+	// selectedGutter marks the cursor row with a quiet, non-hue ▌ on the surface
+	// lift. Selection is a separate channel from the beacon: a background platform,
+	// never a hue, so per-status foregrounds (the amber ●) survive under the cursor.
+	selectedGutter = lipgloss.NewStyle().Foreground(theme.Muted).Background(theme.Surface)
 	// panelStyle is the rounded border wrapping the whole dashboard.
 	panelStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#4C566A")).
+			BorderForeground(theme.Border).
 			Padding(0, 1)
 )
 
@@ -282,31 +287,52 @@ func fitLine(left, right string, width int) string {
 	return left + strings.Repeat(" ", gap) + right
 }
 
-// worktreeLine renders one worktree row, status-first. The selected row is a
-// full-width highlight bar in plain text; other rows use per-status colored
-// cells. Columns are padded before styling so they stay aligned.
+// worktreeLine renders one worktree row, status-first. Columns are padded before
+// styling so they stay aligned. The cursor row gets a neutral surface lift and a
+// quiet ▌ gutter; critically, each cell keeps its own foreground so the amber
+// beacon (and every status hue) survives under the cursor — selection and
+// attention are separate channels (DESIGN.md §5.3).
 func (m *DashboardModel) worktreeLine(w WorktreeView, selected bool, inner int) string {
 	statusRaw := fmt.Sprintf("%s %-8s", w.Status.Glyph(), w.Status.Label())
 	nameRaw := fmt.Sprintf("%-14s", truncate(w.Name, 14))
 	branchRaw := fmt.Sprintf("%-16s", truncate(w.Branch, 16))
 
-	if selected {
-		trailer := w.AgentLabel
-		if trailer == "" && w.HasDiff {
-			trailer = fmt.Sprintf("+%d -%d", w.Added, w.Deleted)
+	// bg paints the surface lift on the cursor row and is a no-op elsewhere.
+	// Applying it to every cell and gap keeps the platform continuous beneath the
+	// per-cell foreground colors.
+	bg := func(s lipgloss.Style) lipgloss.Style {
+		if selected {
+			return s.Background(theme.Surface)
 		}
-		text := fmt.Sprintf("  %s  %s  %s  %s", statusRaw, nameRaw, branchRaw, trailer)
-		return selectedStyle.Width(inner).MaxWidth(inner).Render(text)
+		return s
+	}
+	plain := lipgloss.NewStyle()
+	sep := bg(plain).Render("  ")
+
+	var trailerCell string
+	if w.AgentLabel != "" {
+		trailerCell = bg(agentStyle).Render(w.AgentLabel)
+	} else if w.HasDiff {
+		trailerCell = bg(addStyle).Render(fmt.Sprintf("+%d", w.Added)) + bg(plain).Render(" ") + bg(delStyle).Render(fmt.Sprintf("-%d", w.Deleted))
 	}
 
-	trailerCell := ""
-	if w.AgentLabel != "" {
-		trailerCell = agentStyle.Render(w.AgentLabel)
-	} else if w.HasDiff {
-		trailerCell = addStyle.Render(fmt.Sprintf("+%d", w.Added)) + " " + delStyle.Render(fmt.Sprintf("-%d", w.Deleted))
+	gutter := bg(plain).Render("  ")
+	if selected {
+		gutter = selectedGutter.Render("▌") + bg(plain).Render(" ")
 	}
-	return fmt.Sprintf("  %s  %s  %s  %s",
-		statusStyle[w.Status].Render(statusRaw), nameRaw, branchStyle.Render(branchRaw), trailerCell)
+
+	row := gutter +
+		bg(statusStyle[w.Status]).Render(statusRaw) + sep +
+		bg(textStyle).Render(nameRaw) + sep +
+		bg(branchStyle).Render(branchRaw) + sep +
+		trailerCell
+
+	if selected {
+		if pad := inner - lipgloss.Width(row); pad > 0 {
+			row += bg(plain).Render(strings.Repeat(" ", pad))
+		}
+	}
+	return row
 }
 
 // truncate shortens s to at most max display columns, adding an ellipsis.

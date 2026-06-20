@@ -43,6 +43,12 @@ func buildSessionViews(sessions []state.Session) []tui.SessionView {
 // agentStatus derives a worktree's agent lifecycle state. reconcile does not
 // clear AgentPID, so a recorded PID may be stale: a live PID means working,
 // otherwise a previously recorded agent means it exited.
+//
+// TODO(crash): every dead agent currently reads as a clean StatusExited because
+// the runner does not capture the agent's exit code (it runs detached in a tmux
+// window). Capturing it — e.g. tmux remain-on-exit + #{pane_dead_status}, or a
+// wrapper that records $? — would let this return tui.StatusCrashed on non-zero
+// exit, which DESIGN.md §5.4 splits out as a danger beacon.
 func agentStatus(w *state.Worktree) tui.AgentStatus {
 	if w.AgentPID > 0 && processExists(w.AgentPID) {
 		return tui.StatusWorking
