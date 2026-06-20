@@ -139,7 +139,14 @@ func resolvedAgentCommand(sess *state.Session, w *state.Worktree) string {
 // cwd is already the worktree, so the bare command is sent with no path
 // argument (which is what makes claude/codex/gemini work, not just opencode).
 func launchAgentCommand(s *state.State, sess *state.Session, w *state.Worktree, command string) error {
-	binary := strings.Fields(command)[0]
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return errors.New(errors.CodeAgentNotFound,
+			"No agent command configured.",
+			"The resolved agent command is empty.",
+			"Set agent.command in ~/.config/eme/config.toml.")
+	}
+	binary := fields[0]
 	if _, _, err := runner.Default.Run(context.Background(), "which", binary); err != nil {
 		return errors.New(errors.CodeAgentNotFound,
 			fmt.Sprintf("Configured agent %q not found on PATH.", binary),

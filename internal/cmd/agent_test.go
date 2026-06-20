@@ -201,6 +201,17 @@ func TestLaunchAgentCommand_SendsBareCommand(t *testing.T) {
 	}
 }
 
+func TestLaunchAgentCommand_RejectsEmptyCommand(t *testing.T) {
+	s := &state.State{Version: state.Version}
+	sess := &state.Session{TmuxName: "x"}
+	w := &state.Worktree{Name: "main", TmuxWindowID: "@1"}
+	err := launchAgentCommand(s, sess, w, "")
+	e := errors.As(err)
+	if e == nil || e.Code != errors.CodeAgentNotFound {
+		t.Fatalf("launchAgentCommand(empty) = %v, want code %s", err, errors.CodeAgentNotFound)
+	}
+}
+
 func TestPickWorktreeAgent_RefusesWhenAgentRunning(t *testing.T) {
 	prevPick := pickAgent
 	pickAgent = func(items []tui.AgentItem, def string) (tui.AgentItem, bool, bool, error) {
