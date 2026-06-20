@@ -421,6 +421,11 @@ func createWorktreePrompt(sessionArg, name string) error {
 	return createWorktree(sessionArg, name)
 }
 
+// worktreeTargetPath returns the absolute path for a new worktree named name.
+func worktreeTargetPath(sess *state.Session, name string) string {
+	return filepath.Join(sess.WorktreeDir(), name)
+}
+
 func createWorktree(sessionArg, name string) error {
 	if err := requireTmuxServer(); err != nil {
 		return err
@@ -450,21 +455,43 @@ func createWorktree(sessionArg, name string) error {
 			"Pick a different name or remove the existing worktree first.")
 	}
 
-	mainW := sess.WorktreeByName("main")
-	if mainW == nil {
+	if sess.WorktreeByName("main") == nil {
 		return errors.New(errors.CodeSessionNotFound,
 			fmt.Sprintf("session %q has no main worktree.", sess.DisplayName),
 			"The main worktree is missing or corrupted.",
 			"Recreate the project with `eme new`.")
 	}
 
-	path, err := git.WorktreeAdd(mainW.Path, name, name, true)
-	if err != nil {
+	target := worktreeTargetPath(sess, name)
+
+	// Leaf-collision: refuse a pre-existing non-empty dir or file (and any
+	// existing dir, for safety).
+	if _, err := os.Stat(target); err == nil {
+		return errors.New(errors.CodeWorktreeExists,
+			fmt.Sprintf("%s already exists.", target),
+			"A file or directory already occupies the worktree path.",
+			"Pick a different worktree name or remove the path first.")
+	}
+
+	// Branch-collision pre-check: without this, `worktree add -b` fails loudly,
+	// but a bare `<name>` would silently hijack an existing branch.
+	if git.BranchExists(sess.MainPath(), name) {
+		return errors.New(errors.CodeBranchExists,
+			fmt.Sprintf("branch %q already exists.", name),
+			"A new worktree would try to create a branch that already exists.",
+			"Pick a different name, or check it out manually.")
+	}
+
+	if err := os.MkdirAll(sess.WorktreeDir(), 0o755); err != nil {
+		return fmt.Errorf("create worktree dir: %w", err)
+	}
+	if err := git.WorktreeAddAt(sess.MainPath(), target, "", true); err != nil {
 		return errors.Wrap(errors.CodeCommandFailed,
 			fmt.Sprintf("Failed to create worktree %q.", name),
 			"git worktree add failed.",
 			"Check git output with --verbose.", err)
 	}
+	path := target
 
 	windowID, err := tmux.NewWindow(sess.TmuxName, name, path)
 	if err != nil {

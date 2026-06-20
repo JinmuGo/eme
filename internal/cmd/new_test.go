@@ -7,6 +7,7 @@ import (
 
 	"github.com/jinmu/eme/internal/errors"
 	"github.com/jinmu/eme/internal/git"
+	"github.com/jinmu/eme/internal/state"
 )
 
 func TestRouteByClassification(t *testing.T) {
@@ -23,6 +24,17 @@ func TestRouteByClassification(t *testing.T) {
 		if e := errors.As(err); e == nil || e.Code != tc.wantErr {
 			t.Errorf("kind %v: got %v, want code %s", tc.kind, err, tc.wantErr)
 		}
+	}
+}
+
+func TestWorktreeTargetPath(t *testing.T) {
+	nested := &state.Session{Root: "/p/app", Layout: state.LayoutNestedBare}
+	if got := worktreeTargetPath(nested, "feat"); got != "/p/app/feat" {
+		t.Errorf("nested target = %q", got)
+	}
+	inplace := &state.Session{Root: "/p/app", Layout: state.LayoutInPlace}
+	if got := worktreeTargetPath(inplace, "feat"); got != "/p/app.worktrees/feat" {
+		t.Errorf("in-place target = %q", got)
 	}
 }
 
