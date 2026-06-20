@@ -46,7 +46,7 @@ func TestNewCodesAreDistinct(t *testing.T) {
 	codes := []string{
 		CodeSubmoduleRepo, CodeBareRepo, CodeBrokenGit, CodeWorktreeDirty,
 		CodeWorktreeLocked, CodeSubmodulesUnsupported, CodeDirtyTree,
-		CodeMainProtected, CodeParentRepo,
+		CodeMainProtected, CodeParentRepo, CodeInProgressOp,
 	}
 	seen := map[string]bool{}
 	for _, c := range codes {

@@ -4,6 +4,8 @@ package convert
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/jinmu/eme/internal/errors"
@@ -27,6 +29,15 @@ func CheckPreconditions(root string, opts Options) error {
 			"The repository has uncommitted or untracked changes.",
 			"Convert needs a clean working tree to swap layouts safely.",
 			"Commit or stash your changes, or pass --stash.")
+	}
+	gitDir := filepath.Join(root, ".git")
+	for _, marker := range []string{"MERGE_HEAD", "rebase-merge", "rebase-apply", "CHERRY_PICK_HEAD", "REVERT_HEAD", "BISECT_LOG"} {
+		if _, statErr := os.Stat(filepath.Join(gitDir, marker)); statErr == nil {
+			return errors.New(errors.CodeInProgressOp,
+				"The repository has an in-progress git operation (rebase, merge, cherry-pick, revert, or bisect).",
+				"Converting while an operation is mid-flight can corrupt the repository during the layout swap.",
+				"Finish or abort the operation (e.g. `git rebase --abort`), then retry.")
+		}
 	}
 	mods, _, _ := git.Run(context.Background(), root, "ls-files", "--", ".gitmodules")
 	if strings.TrimSpace(mods) != "" {

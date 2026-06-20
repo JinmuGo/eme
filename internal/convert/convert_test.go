@@ -1,6 +1,8 @@
 package convert
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/jinmu/eme/internal/errors"
@@ -17,6 +19,22 @@ func TestCheckPreconditions_RefusesDirtyTree(t *testing.T) {
 	err := CheckPreconditions("/repo", Options{})
 	if e := errors.As(err); e == nil || e.Code != errors.CodeDirtyTree {
 		t.Fatalf("got %v, want dirty_tree", err)
+	}
+}
+
+func TestCheckPreconditions_RefusesInProgressOp(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, ".git"), 0o755)
+	os.WriteFile(filepath.Join(root, ".git", "MERGE_HEAD"), []byte("ref\n"), 0o644)
+
+	m := runner.NewMock()
+	m.Set("git", []string{"-C", root, "status", "--porcelain"}, "", "", nil)
+	git.Runner = m
+	defer func() { git.Runner = runner.Default }()
+
+	err := CheckPreconditions(root, Options{})
+	if e := errors.As(err); e == nil || e.Code != errors.CodeInProgressOp {
+		t.Fatalf("got %v, want in_progress_op", err)
 	}
 }
 

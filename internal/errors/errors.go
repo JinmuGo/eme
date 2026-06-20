@@ -30,6 +30,7 @@ const (
 	CodeDirtyTree             = "dirty_tree"
 	CodeMainProtected         = "main_protected"
 	CodeParentRepo            = "parent_repo"
+	CodeInProgressOp          = "in_progress_op"
 )
 
 // EmeError is a structured error with a problem, cause, and suggested fix.
