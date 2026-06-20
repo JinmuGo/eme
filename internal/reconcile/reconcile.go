@@ -3,6 +3,7 @@ package reconcile
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/jinmu/eme/internal/git"
 	"github.com/jinmu/eme/internal/state"
@@ -60,19 +61,32 @@ func worktreeExists(sess state.Session, w state.Worktree) bool {
 	}
 	// Check git worktree is not prunable.
 	entries, err := git.WorktreeListPorcelain(sess.MainPath())
-	if err == nil && prunablePaths(entries)[w.Path] {
-		return false
+	if err == nil {
+		lookup := w.Path
+		if resolved, rerr := filepath.EvalSymlinks(w.Path); rerr == nil {
+			lookup = resolved
+		}
+		if prunablePaths(entries)[lookup] {
+			return false
+		}
 	}
 	return true
 }
 
-// prunablePaths returns the set of worktree paths git reports as prunable.
+// prunablePaths returns the set of worktree paths git reports as prunable,
+// keyed by their symlink-resolved (canonical) form so lookups match git's
+// canonical porcelain output regardless of how the path was stored in state.
 func prunablePaths(entries []git.WorktreeEntry) map[string]bool {
 	out := make(map[string]bool)
 	for _, e := range entries {
-		if e.Prunable {
-			out[e.Path] = true
+		if !e.Prunable {
+			continue
 		}
+		p := e.Path
+		if resolved, err := filepath.EvalSymlinks(e.Path); err == nil {
+			p = resolved
+		}
+		out[p] = true
 	}
 	return out
 }
