@@ -123,7 +123,12 @@ func killWorktree(s *state.State, sess *state.Session, name string, force bool) 
 		}
 		// force path: try --force, then double-force for locked worktrees.
 		if err := git.WorktreeRemove(w.Path, true); err != nil {
-			_, _, _ = git.Run(context.Background(), w.Path, "worktree", "remove", "-f", "-f", w.Path)
+			if _, _, runErr := git.Run(context.Background(), w.Path, "worktree", "remove", "-f", "-f", w.Path); runErr != nil {
+				return errors.New(errors.CodeWorktreeLocked,
+					fmt.Sprintf("worktree %q is locked and could not be removed even with --force.", name),
+					"git refused removal even with double --force; the worktree may be locked or corrupted.",
+					"Run `git worktree unlock "+w.Path+"` then retry, or remove it manually.")
+			}
 		}
 	}
 	if err := os.RemoveAll(w.Path); err != nil {
