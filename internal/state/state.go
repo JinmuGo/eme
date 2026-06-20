@@ -155,6 +155,9 @@ func (s *Session) MainPath() string {
 }
 
 // GitDir returns the canonical git directory for the project.
+// It is part of the derived-path API (alongside MainPath and WorktreeDir);
+// retained for completeness and git-dir-targeted operations even though no
+// caller reads it today.
 func (s *Session) GitDir() string {
 	if s.Layout == LayoutInPlace {
 		return filepath.Join(s.Root, ".git")

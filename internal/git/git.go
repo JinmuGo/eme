@@ -159,22 +159,6 @@ func WorktreeRemove(path string, force bool) error {
 	return err
 }
 
-// WorktreeList returns the absolute paths of all linked worktrees for a repo.
-// The bare repo dir is the best place to run this.
-func WorktreeList(dir string) ([]string, error) {
-	out, _, err := Run(context.Background(), dir, "worktree", "list", "--porcelain")
-	if err != nil {
-		return nil, err
-	}
-	var paths []string
-	for _, line := range strings.Split(out, "\n") {
-		if strings.HasPrefix(line, "worktree ") {
-			paths = append(paths, strings.TrimPrefix(line, "worktree "))
-		}
-	}
-	return paths, nil
-}
-
 // CurrentBranch returns the current branch of a worktree, or "" if detached.
 func CurrentBranch(dir string) (string, error) {
 	out, _, err := Run(context.Background(), dir, "rev-parse", "--abbrev-ref", "HEAD")
