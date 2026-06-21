@@ -4,8 +4,11 @@
 # subagent-driven-development scratch
 .superpowers/
 
-# local docs (untracked)
-/docs/
+# local docs — keep most local, but publish usage.md + ADRs in the public repo
+/docs/*
+!/docs/usage.md
+!/docs/adr/
+
 .gstack/
 
 # macOS

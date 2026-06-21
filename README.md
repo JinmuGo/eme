@@ -6,8 +6,6 @@
 
 `eme` runs each AI coding agent in its own git worktree as a real tmux session, and shows you — across every worktree — which one is `waiting-for-input`, which is still `working`, and which has `exited`. All without leaving the terminal.
 
-![demo](docs/demo.gif)
-
 ## Install
 
 ```bash
@@ -114,4 +112,7 @@ When you run `eme new`, eme shows an agent picker (claude, codex, gemini, openco
 
 ## License
 
-MIT
+`eme` is licensed under the MIT License — see [LICENSE](LICENSE).
+
+Third-party open-source dependencies and their licenses are disclosed in
+[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
