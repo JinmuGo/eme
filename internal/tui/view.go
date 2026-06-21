@@ -14,7 +14,7 @@ const (
 	StatusWorking                    // agent process is alive
 	StatusExited                     // agent ran and exited cleanly
 	StatusWaiting                    // waiting for input (reserved; not produced in v1)
-	StatusCrashed                    // agent exited non-zero (reserved; needs exit-code capture — see DESIGN.md §5.4)
+	StatusCrashed                    // agent exited non-zero (exec replaces the shell → #{pane_dead_status})
 )
 
 // statusStyle maps each status to its glyph+label style, per DESIGN.md §5. The
@@ -50,7 +50,10 @@ func (s AgentStatus) Label() string {
 	case StatusWaiting:
 		return "waiting"
 	case StatusWorking:
-		return "working"
+		// v1 interim: the alive state lumps working|waiting (the runtime can't yet
+		// tell them apart — DESIGN.md §5.2). Honest label until silence-detection
+		// splits out waiting, when this flips back to "working".
+		return "running"
 	case StatusExited:
 		return "exited"
 	case StatusCrashed:
@@ -62,11 +65,11 @@ func (s AgentStatus) Label() string {
 
 // NeedsAttention reports whether this status counts toward the header tally.
 //
-// Per DESIGN.md §5.4 the target is waiting || crashed — clean exits should recede.
-// That split is gated on exit-code capture in the runner (not yet built), so until
-// crashed is produced, exited still counts here to keep the tally meaningful.
+// Per DESIGN.md §5.4 this is waiting || crashed — clean exits recede, running is
+// calm. crashed is now produced (exec + #{pane_dead_status}), so exited no longer
+// counts; waiting joins once silence-detection lands.
 func (s AgentStatus) NeedsAttention() bool {
-	return s == StatusWaiting || s == StatusCrashed || s == StatusExited
+	return s == StatusWaiting || s == StatusCrashed
 }
 
 // WorktreeView is a render-ready view of one worktree (tmux window).

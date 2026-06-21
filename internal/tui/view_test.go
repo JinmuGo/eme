@@ -9,9 +9,10 @@ func TestAgentStatusGlyphLabel(t *testing.T) {
 		label string
 	}{
 		{StatusWaiting, "●", "waiting"},
-		{StatusWorking, "◐", "working"},
+		{StatusWorking, "◐", "running"},
 		{StatusExited, "○", "exited"},
 		{StatusIdle, "·", "idle"},
+		{StatusCrashed, "✗", "crashed"},
 	}
 	for _, c := range cases {
 		if got := c.s.Glyph(); got != c.glyph {
@@ -26,7 +27,8 @@ func TestAgentStatusGlyphLabel(t *testing.T) {
 func TestAgentStatusNeedsAttention(t *testing.T) {
 	want := map[AgentStatus]bool{
 		StatusWaiting: true,
-		StatusExited:  true,
+		StatusCrashed: true,
+		StatusExited:  false,
 		StatusWorking: false,
 		StatusIdle:    false,
 	}

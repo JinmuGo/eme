@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -34,6 +33,15 @@ func captureSendKeys(t *testing.T, target, line *string) {
 		return nil
 	}
 	t.Cleanup(func() { sendKeys = prev })
+}
+
+// stubAgentRunning swaps the agentRunningFn seam so liveness checks are hermetic
+// (no real tmux), and restores it on cleanup.
+func stubAgentRunning(t *testing.T, running bool, err error) {
+	t.Helper()
+	prev := agentRunningFn
+	agentRunningFn = func(*state.Worktree) (bool, error) { return running, err }
+	t.Cleanup(func() { agentRunningFn = prev })
 }
 
 // tempState points statePath at a throwaway state file for the duration of the
@@ -90,6 +98,7 @@ func TestChooseAndLaunchAgent_AppliesAndLaunchesOnSelection(t *testing.T) {
 	tempCfg(t)
 	tempState(t)
 	stubWhich(t, "claude")
+	stubAgentRunning(t, false, nil) // fresh pane: launch proceeds past the live-pane guard
 	var line string
 	var target string
 	captureSendKeys(t, &target, &line)
@@ -115,8 +124,8 @@ func TestChooseAndLaunchAgent_AppliesAndLaunchesOnSelection(t *testing.T) {
 	if applied != "claude" {
 		t.Errorf("apply got %q, want claude", applied)
 	}
-	if line != "claude" {
-		t.Errorf("launched line = %q, want claude", line)
+	if line != "exec claude" {
+		t.Errorf("launched line = %q, want %q (exec-prefixed, no path arg)", line, "exec claude")
 	}
 }
 
@@ -182,6 +191,7 @@ func TestAgentPickFlagRegistered(t *testing.T) {
 func TestLaunchAgentCommand_SendsBareCommand(t *testing.T) {
 	tempState(t)
 	stubWhich(t, "claude")
+	stubAgentRunning(t, false, nil) // fresh pane: launch proceeds past the live-pane guard
 	var gotTarget, gotLine string
 	captureSendKeys(t, &gotTarget, &gotLine)
 
@@ -195,9 +205,10 @@ func TestLaunchAgentCommand_SendsBareCommand(t *testing.T) {
 	if gotTarget != "myapp:@1" {
 		t.Errorf("target = %q, want %q", gotTarget, "myapp:@1")
 	}
-	// Regression: the pane cwd is already the worktree, so NO path argument.
-	if gotLine != "claude" {
-		t.Errorf("sent line = %q, want bare %q (no path arg)", gotLine, "claude")
+	// exec-prefixed so the agent replaces the shell and surfaces its exit status
+	// (T0 finding). The pane cwd is already the worktree, so still NO path arg.
+	if gotLine != "exec claude" {
+		t.Errorf("sent line = %q, want %q (exec prefix, no path arg)", gotLine, "exec claude")
 	}
 }
 
@@ -220,14 +231,84 @@ func TestPickWorktreeAgent_RefusesWhenAgentRunning(t *testing.T) {
 	}
 	t.Cleanup(func() { pickAgent = prevPick })
 
+	// The pane is live and an agent was launched there → agentRunning is true.
+	stubAgentRunning(t, true, nil)
+
 	s := &state.State{Version: state.Version}
 	sess := &state.Session{TmuxName: "x"}
-	// os.Getpid() is this test process — guaranteed alive, so processExists is true.
-	w := &state.Worktree{Name: "main", TmuxWindowID: "@1", AgentPID: os.Getpid()}
+	w := &state.Worktree{Name: "main", TmuxWindowID: "@1", LastAgentCommand: "claude"}
 
 	err := pickWorktreeAgent(s, sess, w)
 	e := errors.As(err)
 	if e == nil || e.Code != errors.CodeCommandFailed {
 		t.Fatalf("pickWorktreeAgent with running agent = %v, want code %s", err, errors.CodeCommandFailed)
+	}
+}
+
+// TestLaunchAgentCommand_RefusesWhenAgentRunning locks the defense-in-depth guard:
+// a launch must never send `exec …` into a pane that already has a live agent (it
+// would land as literal keystrokes in the agent's TUI and corrupt its exit status).
+func TestLaunchAgentCommand_RefusesWhenAgentRunning(t *testing.T) {
+	stubWhich(t, "claude")
+	stubAgentRunning(t, true, nil) // a live agent already occupies the pane
+	sent := false
+	prev := sendKeys
+	sendKeys = func(string, string) error { sent = true; return nil }
+	t.Cleanup(func() { sendKeys = prev })
+
+	s := &state.State{Version: state.Version}
+	sess := &state.Session{TmuxName: "myapp"}
+	w := &state.Worktree{Name: "main", TmuxWindowID: "@1", LastAgentCommand: "claude"}
+
+	err := launchAgentCommand(s, sess, w, "claude")
+	e := errors.As(err)
+	if e == nil || e.Code != errors.CodeCommandFailed {
+		t.Fatalf("launch into live pane = %v, want code %s", err, errors.CodeCommandFailed)
+	}
+	if sent {
+		t.Error("must NOT send keys into a live agent pane")
+	}
+}
+
+// TestToggleAgent_LaunchesWhenPaneIdle: with no live agent (pane idle/dead), the
+// toggle routes to launch — exec-prefixed, per the T1 launch model.
+func TestToggleAgent_LaunchesWhenPaneIdle(t *testing.T) {
+	tempState(t)
+	stubWhich(t, "claude")
+	stubAgentRunning(t, false, nil) // pane idle/dead → toggle launches
+	var gotTarget, gotLine string
+	captureSendKeys(t, &gotTarget, &gotLine)
+
+	s := &state.State{Version: state.Version}
+	sess := &state.Session{TmuxName: "myapp", DisplayName: "myapp", AgentCommand: "claude"}
+	w := &state.Worktree{Name: "main", Path: "/p/main", TmuxWindowID: "@1"}
+
+	if err := toggleAgent(s, sess, w); err != nil {
+		t.Fatalf("toggleAgent: %v", err)
+	}
+	if gotLine != "exec claude" {
+		t.Errorf("idle toggle should launch via exec; sent %q, want %q", gotLine, "exec claude")
+	}
+}
+
+// TestToggleAgent_StopsWhenAgentRunning locks the core safety property of the
+// lifecycle fix: a live agent is interrupted (C-c), NEVER relaunched — relaunching
+// would type `exec …` into the running agent's pane. tmux.SendKey fails here (no
+// server), but the assertion is that the launch seam was never reached.
+func TestToggleAgent_StopsWhenAgentRunning(t *testing.T) {
+	tempState(t)
+	stubAgentRunning(t, true, nil) // a live agent occupies the pane
+	launched := false
+	prev := sendKeys
+	sendKeys = func(string, string) error { launched = true; return nil }
+	t.Cleanup(func() { sendKeys = prev })
+
+	s := &state.State{Version: state.Version}
+	sess := &state.Session{TmuxName: "myapp", DisplayName: "myapp", AgentCommand: "claude"}
+	w := &state.Worktree{Name: "main", TmuxWindowID: "@1", LastAgentCommand: "claude"}
+
+	_ = toggleAgent(s, sess, w)
+	if launched {
+		t.Error("toggle must interrupt a live agent, never relaunch into its pane")
 	}
 }

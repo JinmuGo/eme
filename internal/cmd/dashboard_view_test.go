@@ -1,24 +1,38 @@
 package cmd
 
 import (
-	"os"
 	"testing"
 
 	"github.com/jinmu/eme/internal/git"
 	"github.com/jinmu/eme/internal/runner"
 	"github.com/jinmu/eme/internal/state"
+	"github.com/jinmu/eme/internal/tmux"
 	"github.com/jinmu/eme/internal/tui"
 )
 
-func TestAgentStatus(t *testing.T) {
-	if got := agentStatus(&state.Worktree{}); got != tui.StatusIdle {
-		t.Errorf("empty worktree = %v, want StatusIdle", got)
+func TestClassifyStatus(t *testing.T) {
+	cases := []struct {
+		name    string
+		info    tmux.PaneInfo
+		present bool
+		last    string
+		want    tui.AgentStatus
+	}{
+		{"never ran", tmux.PaneInfo{}, false, "", tui.StatusIdle},
+		{"ran, window gone", tmux.PaneInfo{}, false, "claude", tui.StatusExited},
+		{"alive agent", tmux.PaneInfo{Dead: false}, true, "claude", tui.StatusWorking},
+		{"alive shell, no agent", tmux.PaneInfo{Dead: false}, true, "", tui.StatusIdle},
+		{"clean exit", tmux.PaneInfo{Dead: true, DeadStatus: 0}, true, "claude", tui.StatusExited},
+		{"crash", tmux.PaneInfo{Dead: true, DeadStatus: 3}, true, "claude", tui.StatusCrashed},
+		// The agent runs under a different process name (claude => node); status must
+		// not depend on matching Command to the agent name. pane_dead carries it.
+		{"crash, node-named", tmux.PaneInfo{Dead: true, DeadStatus: 1, Command: "node"}, true, "claude", tui.StatusCrashed},
+		{"running, node-named", tmux.PaneInfo{Dead: false, Command: "node"}, true, "claude", tui.StatusWorking},
 	}
-	if got := agentStatus(&state.Worktree{AgentPID: os.Getpid()}); got != tui.StatusWorking {
-		t.Errorf("live pid = %v, want StatusWorking", got)
-	}
-	if got := agentStatus(&state.Worktree{LastAgentCommand: "claude"}); got != tui.StatusExited {
-		t.Errorf("ran-before = %v, want StatusExited", got)
+	for _, c := range cases {
+		if got := classifyStatus(c.info, c.present, c.last); got != c.want {
+			t.Errorf("%s: classifyStatus = %v, want %v", c.name, got, c.want)
+		}
 	}
 }
 
@@ -44,12 +58,19 @@ func TestBuildSessionViews_MapsFields(t *testing.T) {
 		DisplayName: "myapp",
 		Root:        "/code/myapp",
 		Worktrees: []state.Worktree{
-			{Name: "main", Branch: "main"},
-			{Name: "feat", Branch: "feat/x", AgentPID: os.Getpid(), LastAgentCommand: "claude"},
+			{Name: "main", Branch: "main", TmuxWindowID: "@1"},
+			{Name: "feat", Branch: "feat/x", TmuxWindowID: "@2", LastAgentCommand: "claude"},
 		},
 	}}
 
-	views := buildSessionViews(sessions)
+	// @2 (feat) has a live pane running the agent (reported as node) → running.
+	// @1 (main) recorded no agent → idle, regardless of its live shell pane.
+	snap := map[string]tmux.PaneInfo{
+		"@1": {Dead: false, Command: "zsh"},
+		"@2": {Dead: false, Command: "node"},
+	}
+
+	views := buildSessionViews(sessions, snap)
 	if len(views) != 1 || len(views[0].Worktrees) != 2 {
 		t.Fatalf("unexpected shape: %+v", views)
 	}

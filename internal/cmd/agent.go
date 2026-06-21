@@ -3,10 +3,8 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
-	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -32,6 +30,9 @@ var pickAgent = runAgentPicker
 
 // sendKeys is the tmux send-keys seam (swapped in tests).
 var sendKeys = tmux.SendKeys
+
+// agentRunningFn reports whether an agent is live in a worktree's pane (seam for tests).
+var agentRunningFn = agentRunning
 
 // runAgentPicker shows the agent picker as a full-screen bubbletea program.
 func runAgentPicker(items []tui.AgentItem, defaultName string) (tui.AgentItem, bool, bool, error) {
@@ -91,7 +92,10 @@ func defaultAgentName(catalog []config.AgentSpec, command string) string {
 // worktree's override. It refuses while an agent is already running, because the
 // picked command would otherwise be typed into the running agent's pane.
 func pickWorktreeAgent(s *state.State, sess *state.Session, w *state.Worktree) error {
-	if w.AgentPID > 0 && processExists(w.AgentPID) {
+	// Refuse before showing the picker if an agent is live in the pane (keyed off
+	// pane_dead). Best-effort: if pane state is unreadable, fall through — the launch
+	// path's own guard is the backstop.
+	if running, err := agentRunningFn(w); err == nil && running {
 		return errors.New(errors.CodeCommandFailed,
 			"An agent is already running in this worktree.",
 			"Choosing a new agent would type into the running one.",
@@ -154,15 +158,39 @@ func launchAgentCommand(s *state.State, sess *state.Session, w *state.Worktree, 
 			"Install it or set agent.command in ~/.config/eme/config.toml.")
 	}
 
+	// Defense in depth: never send `exec <cmd>` into a pane that already runs a live
+	// agent — it would land as literal keystrokes in the agent's TUI and corrupt both
+	// the session and the exit status the dashboard reads. Best-effort: if pane state is
+	// unreadable, proceed with the user's explicit launch.
+	if running, err := agentRunningFn(w); err == nil && running {
+		return errors.New(errors.CodeCommandFailed,
+			"An agent is already running in this worktree.",
+			"Sending a command would type into the running agent's pane.",
+			"Stop it first (press a), then launch again.")
+	}
+
 	target := sess.TmuxName + ":" + w.TmuxWindowID
-	if err := sendKeys(target, command); err != nil {
+
+	// Revive a dead pane left by a prior exec'd agent (best-effort: a live pane
+	// errors harmlessly, a dead one returns to a fresh shell in the worktree).
+	_ = tmux.RespawnPane(sess.TmuxName, w.TmuxWindowID, w.Path)
+	// Keep the pane and its exit status after the agent exits, so status can read
+	// exited vs crashed via pane_dead/pane_dead_status (DESIGN.md §5.4). Per window.
+	_ = tmux.SetRemainOnExit(sess.TmuxName, w.TmuxWindowID)
+
+	// exec so the agent REPLACES the shell and becomes the pane's own process; its
+	// exit code then surfaces via #{pane_dead_status} (T0 experiment 2026-06-21).
+	// Without exec the agent is a shell child, the shell survives its exit, and the
+	// pane never reports a status.
+	if err := sendKeys(target, "exec "+command); err != nil {
 		return errors.Wrap(errors.CodeCommandFailed,
 			"Could not send agent command to tmux pane.",
 			"tmux send-keys failed.",
 			"Verify the tmux window still exists.", err)
 	}
 
-	// Best-effort: record pane PID as agent PID.
+	// Best-effort: record pane PID (under exec this is the agent's own PID). Store
+	// the bare command (no exec prefix) so the status label reads the agent name.
 	if pid, err := tmux.PanePID(sess.TmuxName, w.TmuxWindowID); err == nil {
 		w.AgentPID = pid
 		w.LastAgentCommand = command
@@ -224,8 +252,15 @@ func toggleAgent(s *state.State, sess *state.Session, w *state.Worktree) error {
 			"Set agent.command in ~/.config/eme/config.toml.")
 	}
 
-	// If we have a recorded PID and it is alive, stop it by sending Ctrl+C.
-	if w.AgentPID > 0 && processExists(w.AgentPID) {
+	// Decide stop-vs-launch off pane liveness (pane_dead), not a recorded pid: under the
+	// exec model the agent IS the pane process, so a recorded pid goes stale the instant
+	// it exits, and a stale "not running" reading would relaunch — typing `exec …` into a
+	// live agent's TUI. Keying off the pane keeps a surviving agent on the stop path.
+	running, err := agentRunningFn(w)
+	if err != nil {
+		return err
+	}
+	if running {
 		target := sess.TmuxName + ":" + w.TmuxWindowID
 		if err := tmux.SendKey(target, "C-c"); err != nil {
 			return errors.Wrap(errors.CodeCommandFailed,
@@ -237,27 +272,32 @@ func toggleAgent(s *state.State, sess *state.Session, w *state.Worktree) error {
 		if err := saveState(s); err != nil {
 			return err
 		}
-		fmt.Printf("Stopped agent in %s/%s\n", sess.DisplayName, w.Name)
+		// C-c is a gentle interrupt an interactive agent may trap; report honestly
+		// rather than asserting it stopped. If it survives, the next toggle interrupts
+		// it again — it never falls through to relaunch into a live pane.
+		fmt.Printf("Sent interrupt to agent in %s/%s\n", sess.DisplayName, w.Name)
 		return nil
 	}
 
 	return launchAgentCommand(s, sess, w, command)
 }
 
-func processExists(pid int) bool {
-	p, err := os.FindProcess(pid)
+// agentRunning reports whether an agent is currently live in the worktree's pane.
+// It keys off pane_dead — the same ground truth the dashboard uses — not a recorded
+// pid, which goes stale the instant an exec'd agent exits (under exec the agent IS the
+// pane process). An agent is running iff its pane is present, not dead, and an agent
+// was launched there. Keeping stop/launch decisions on this signal ensures a relaunch
+// never types `exec …` into a live agent's TUI.
+func agentRunning(w *state.Worktree) (bool, error) {
+	snap, err := tmux.PanesSnapshot()
 	if err != nil {
-		return false
+		return false, errors.Wrap(errors.CodeCommandFailed,
+			"Could not read agent status.",
+			"Reading tmux pane state failed.",
+			"Verify the tmux server is reachable.", err)
 	}
-	return p.Signal(syscall.Signal(0)) == nil
-}
-
-func killProcess(pid int) error {
-	p, err := os.FindProcess(pid)
-	if err != nil {
-		return err
-	}
-	return p.Signal(os.Interrupt)
+	info, present := snap[w.TmuxWindowID]
+	return present && !info.Dead && w.LastAgentCommand != "", nil
 }
 
 func init() {

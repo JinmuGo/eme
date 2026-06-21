@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/jinmu/eme/internal/state"
+	"github.com/jinmu/eme/internal/tmux"
 	"github.com/jinmu/eme/internal/tui"
 )
 
@@ -22,12 +23,27 @@ func runDashboard() error {
 		return printSessionList(s)
 	}
 
-	model := tui.NewDashboard(buildSessionViews(s.Sessions), func() ([]tui.SessionView, error) {
+	// F1: a momentarily-down or unreachable tmux server must not block the whole
+	// dashboard. Degrade to an empty snapshot — classifyStatus then reads idle/exited
+	// (present=false), never a guessed running/beacon — so a user with valid state can
+	// still see their worktree list. Mirrors reconcile's tolerance (commit 8f8090b).
+	snap, err := tmux.PanesSnapshot()
+	if err != nil {
+		snap = map[string]tmux.PaneInfo{}
+	}
+	model := tui.NewDashboard(buildSessionViews(s.Sessions, snap), func() ([]tui.SessionView, error) {
 		rs, err := loadReconciledState()
 		if err != nil {
 			return nil, err
 		}
-		return buildSessionViews(rs.Sessions), nil
+		// F1 (ground truth, never a guess): if the snapshot read fails, surface the
+		// error so the dashboard keeps its last-known views instead of repainting a
+		// guessed status.
+		snap, err := tmux.PanesSnapshot()
+		if err != nil {
+			return nil, err
+		}
+		return buildSessionViews(rs.Sessions, snap), nil
 	})
 	finalModel, err := tea.NewProgram(model, tea.WithAltScreen()).Run()
 	if err != nil {

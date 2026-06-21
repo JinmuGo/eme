@@ -16,7 +16,7 @@ func sampleViews() []SessionView {
 	return []SessionView{
 		{DisplayName: "myapp", Root: "/code/myapp", Worktrees: []WorktreeView{
 			{Name: "main", Branch: "main", SessionID: "myapp", IsMain: true, Status: StatusWorking, AgentLabel: "claude"},
-			{Name: "feat", Branch: "feat/x", SessionID: "myapp", Status: StatusExited},
+			{Name: "feat", Branch: "feat/x", SessionID: "myapp", Status: StatusCrashed},
 		}},
 		{DisplayName: "api", Root: "/code/api", Worktrees: []WorktreeView{
 			{Name: "main", Branch: "main", SessionID: "api", IsMain: true, Status: StatusIdle},
@@ -82,6 +82,24 @@ func TestDashboardRefreshRebuildsRows(t *testing.T) {
 	}
 }
 
+// TestDashboardRefreshReloadErrorKeepsLastKnown locks the F1 guardrail: when the
+// reload (i.e. the tmux pane snapshot) fails, refresh keeps the last-known views
+// verbatim and only records a transient notice — it must never blank the list or
+// repaint a guessed status.
+func TestDashboardRefreshReloadErrorKeepsLastKnown(t *testing.T) {
+	m := NewDashboard(sampleViews(), func() ([]SessionView, error) {
+		return nil, errors.New("snapshot read failed")
+	})
+	rowsBefore := len(m.rows) // 3 (flattened sampleViews)
+	m.refresh(nil)
+	if len(m.rows) != rowsBefore {
+		t.Errorf("rows = %d, want %d preserved on reload error (F1 guardrail)", len(m.rows), rowsBefore)
+	}
+	if m.notice != "refresh failed: snapshot read failed" {
+		t.Errorf("notice = %q, want the reload error surfaced", m.notice)
+	}
+}
+
 func TestDashboardRefreshActionErrorIsTransient(t *testing.T) {
 	m := NewDashboard(sampleViews(), func() ([]SessionView, error) { return sampleViews(), nil })
 	m.refresh(errors.New("kill failed"))
@@ -95,12 +113,12 @@ func TestDashboardRefreshActionErrorIsTransient(t *testing.T) {
 
 func TestDashboardViewContainsMotifAndStatus(t *testing.T) {
 	v := NewDashboard(sampleViews(), nil).View()
-	for _, want := range []string{"eme", "needs you", "myapp", "working", "exited", "idle", "◐", "○"} {
+	for _, want := range []string{"eme", "needs you", "myapp", "running", "crashed", "idle", "◐", "✗"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("View() missing %q\n---\n%s", want, v)
 		}
 	}
-	// One exited worktree → "1 needs you".
+	// One crashed worktree → "1 needs you" (clean exits no longer count).
 	if !strings.Contains(v, "1 needs you") {
 		t.Errorf("View() should show '1 needs you'\n%s", v)
 	}

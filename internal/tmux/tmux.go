@@ -281,6 +281,73 @@ func PanePID(session, windowID string) (int, error) {
 	return pid, nil
 }
 
+// PaneInfo is a snapshot of one pane's liveness, used to classify agent status.
+// Status keys off Dead/DeadStatus (structural) rather than matching Command to the
+// agent name, because an interactive agent runs under a different process name
+// (e.g. claude runs as `node`, so Command reads "node", not "claude").
+type PaneInfo struct {
+	Dead       bool
+	DeadStatus int    // exit code when Dead; 0 otherwise
+	Command    string // pane_current_command — a secondary/label signal only
+}
+
+// PanesSnapshot returns liveness for every pane on the server, keyed by window id.
+// One batched list-panes call replaces N per-worktree polls. A window maps to its
+// first pane (eme runs one pane per agent window).
+func PanesSnapshot() (map[string]PaneInfo, error) {
+	out, _, err := tmux("list-panes", "-a", "-F",
+		"#{window_id}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_current_command}")
+	if err != nil {
+		return nil, fmt.Errorf("tmux list-panes -a: %w", err)
+	}
+	snap := make(map[string]PaneInfo)
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if line == "" {
+			continue
+		}
+		f := strings.SplitN(line, "\t", 4)
+		if len(f) < 4 {
+			continue
+		}
+		wid := f[0]
+		if _, seen := snap[wid]; seen {
+			continue // first pane per window wins
+		}
+		info := PaneInfo{Dead: f[1] == "1", Command: f[3]}
+		if info.Dead {
+			info.DeadStatus, _ = strconv.Atoi(strings.TrimSpace(f[2]))
+		}
+		snap[wid] = info
+	}
+	return snap, nil
+}
+
+// SetRemainOnExit keeps a window's pane (and its exit status) alive after the
+// process exits, so status can read pane_dead/pane_dead_status. Set per agent
+// window at launch — not globally, so only eme's agent panes freeze on exit.
+func SetRemainOnExit(session, windowID string) error {
+	target := session + ":" + windowID
+	if _, _, err := tmux("set-option", "-w", "-t", target, "remain-on-exit", "on"); err != nil {
+		return fmt.Errorf("tmux set remain-on-exit: %w", err)
+	}
+	return nil
+}
+
+// RespawnPane revives a dead pane (left by a prior exec'd agent) back to a fresh
+// shell in cwd. It is an error to respawn a live pane without -k, so callers use it
+// best-effort before relaunch: dead panes revive, live panes no-op via the error.
+func RespawnPane(session, windowID, cwd string) error {
+	target := session + ":" + windowID
+	args := []string{"respawn-pane", "-t", target}
+	if cwd != "" {
+		args = append(args, "-c", cwd)
+	}
+	if _, _, err := tmux(args...); err != nil {
+		return fmt.Errorf("tmux respawn-pane: %w", err)
+	}
+	return nil
+}
+
 // PopupSize returns the dimensions available for a tmux popup in the current client.
 func PopupSize() (width, height int, err error) {
 	out, _, err := tmux("display", "-p", "#{popup_width}\t#{popup_height}")
