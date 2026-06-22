@@ -10,11 +10,11 @@ import (
 type AgentStatus int
 
 const (
-	StatusIdle    AgentStatus = iota // no agent has run
-	StatusWorking                    // agent process is alive
-	StatusExited                     // agent ran and exited cleanly
+	StatusIdle    AgentStatus = iota // pane at a shell prompt (no foreground agent)
+	StatusWorking                    // a non-shell command (the agent) is in the foreground
+	StatusExited                     // window/pane gone after an agent ran, or a clean dead pane
 	StatusWaiting                    // waiting for input (reserved; not produced in v1)
-	StatusCrashed                    // agent exited non-zero (exec replaces the shell → #{pane_dead_status})
+	StatusCrashed                    // a pane that died non-zero — a manual kill/exit (rare)
 )
 
 // statusStyle maps each status to its glyph+label style, per DESIGN.md §5. The
@@ -66,8 +66,9 @@ func (s AgentStatus) Label() string {
 // NeedsAttention reports whether this status counts toward the header tally.
 //
 // Per DESIGN.md §5.4 this is waiting || crashed — clean exits recede, running is
-// calm. crashed is now produced (exec + #{pane_dead_status}), so exited no longer
-// counts; waiting joins once silence-detection lands.
+// calm. Under the child-process launch model crashed/exited are reached only by a
+// pane the user manually kills/exits (an agent that self-exits returns to a live
+// shell and reads idle); waiting joins once silence-detection lands.
 func (s AgentStatus) NeedsAttention() bool {
 	return s == StatusWaiting || s == StatusCrashed
 }

@@ -74,3 +74,78 @@ func TestFolderPicker_NoDuplicatesAfterEditing(t *testing.T) {
 		seen[f] = true
 	}
 }
+
+// TestFolderPicker_EmptyListOffersCreate: when the typed query matches no existing
+// folder, the picker offers a "create new folder" row and Enter returns its resolved
+// path — the fix for the dashboard's `n` dead-end where Enter did nothing.
+func TestFolderPicker_EmptyListOffersCreate(t *testing.T) {
+	m := NewFolderPicker([]string{"/Users/t/code/existing"})
+	m.home = "/Users/t"
+	m = typeInto(m, "newproj")
+
+	if len(m.filtered) != 0 {
+		t.Fatalf("filtered = %v, want empty (no existing match)", m.filtered)
+	}
+	if m.createPath != "/Users/t/newproj" {
+		t.Fatalf("createPath = %q, want /Users/t/newproj", m.createPath)
+	}
+	if m.rowCount() != 1 {
+		t.Fatalf("rowCount = %d, want 1 (just the create row)", m.rowCount())
+	}
+	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = model.(*FolderPickerModel)
+	if m.Cancelled() {
+		t.Error("creating a new folder must not be a cancel")
+	}
+	if m.Selected() != "/Users/t/newproj" {
+		t.Errorf("Selected() = %q, want /Users/t/newproj", m.Selected())
+	}
+}
+
+// TestFolderPicker_QueryResolution: queries resolve ~ and relative paths against home.
+func TestFolderPicker_QueryResolution(t *testing.T) {
+	cases := []struct{ typed, want string }{
+		{"~/dev/x", "/Users/t/dev/x"},
+		{"code/newproj", "/Users/t/code/newproj"},
+		{"/tmp/fresh", "/tmp/fresh"},
+		{"plainname", "/Users/t/plainname"},
+	}
+	for _, c := range cases {
+		m := NewFolderPicker([]string{"/Users/t/code/existing"})
+		m.home = "/Users/t"
+		m = typeInto(m, c.typed)
+		if m.createPath != c.want {
+			t.Errorf("typed %q: createPath = %q, want %q", c.typed, m.createPath, c.want)
+		}
+	}
+}
+
+// TestFolderPicker_CreateOfferedEvenWithSubstringMatch: the create row stays available
+// even when the typed name is a substring of an existing folder — so the user is
+// never stuck with a dead end. The matched folder is still selectable above it.
+func TestFolderPicker_CreateOfferedEvenWithSubstringMatch(t *testing.T) {
+	m := NewFolderPicker([]string{"/Users/t/code/newproject-old"})
+	m.home = "/Users/t"
+	m = typeInto(m, "newproj")
+	if len(m.filtered) != 1 {
+		t.Fatalf("filtered = %v, want the substring-matched folder still listed", m.filtered)
+	}
+	if m.createPath != "/Users/t/newproj" {
+		t.Errorf("createPath = %q, want /Users/t/newproj (create still offered)", m.createPath)
+	}
+	// the create row is the last row (after the one filtered match)
+	if m.rowCount() != 2 {
+		t.Errorf("rowCount = %d, want 2 (match + create row)", m.rowCount())
+	}
+}
+
+// TestFolderPicker_ExactExistingNoCreate: typing the full path of an existing folder
+// must not offer a duplicate create row — it is already selectable in the list.
+func TestFolderPicker_ExactExistingNoCreate(t *testing.T) {
+	m := NewFolderPicker([]string{"/Users/t/code/app"})
+	m.home = "/Users/t"
+	m = typeInto(m, "/Users/t/code/app")
+	if m.createPath != "" {
+		t.Errorf("createPath = %q, want empty (exact existing item)", m.createPath)
+	}
+}

@@ -48,8 +48,22 @@ var (
 			Padding(0, 1)
 )
 
-// rowRef points at a worktree within the view-model.
-type rowRef struct{ session, worktree int }
+// rowKind distinguishes a session header row from a worktree row in the flattened,
+// fold-aware selectable list.
+type rowKind int
+
+const (
+	rowSession rowKind = iota
+	rowWorktree
+)
+
+// rowRef points at a row within the view-model: either a session header
+// (kind==rowSession) or a worktree under it (kind==rowWorktree, worktree valid).
+type rowRef struct {
+	kind     rowKind
+	session  int
+	worktree int
+}
 
 // killTarget describes a pending kill confirmation.
 type killTarget struct {
@@ -61,14 +75,18 @@ type killTarget struct {
 
 // DashboardModel is the main dashboard.
 type DashboardModel struct {
-	views    []SessionView
-	rows     []rowRef // flattened selectable worktree rows, in render order
-	cursor   int      // index into rows
-	width    int
-	height   int
-	notice   string
-	pending  *killTarget
-	showHelp bool
+	views  []SessionView
+	rows   []rowRef // flattened selectable rows (session headers + worktrees), in render order
+	cursor int      // index into rows
+	// collapsed records which sessions are folded, keyed by session identity (its
+	// SessionID) so the fold state survives reloads and reorders — the same identity
+	// principle the sticky cursor uses (ARCH-5).
+	collapsed map[string]bool
+	width     int
+	height    int
+	notice    string
+	pending   *killTarget
+	showHelp  bool
 	// leaving records that the user chose to switch (Enter) to leaveSession/
 	// leaveWorktree. When true, the model has quit and the cmd layer execs
 	// `eme switch` afterward, once bubbletea has restored the terminal. An
@@ -97,17 +115,22 @@ type DashboardModel struct {
 // NewDashboard creates a dashboard model. reload is called after each child
 // action (create/kill/agent) completes to refresh the view-model.
 func NewDashboard(views []SessionView, reload func() ([]SessionView, error)) *DashboardModel {
-	m := &DashboardModel{views: views, reload: reload}
+	m := &DashboardModel{views: views, reload: reload, collapsed: map[string]bool{}}
 	m.rebuildRows()
 	return m
 }
 
-// rebuildRows recomputes the flattened selectable list and clamps the cursor.
+// rebuildRows recomputes the flattened selectable list — a header per session, then
+// that session's worktrees unless it is folded — and clamps the cursor.
 func (m *DashboardModel) rebuildRows() {
 	m.rows = nil
 	for si := range m.views {
+		m.rows = append(m.rows, rowRef{kind: rowSession, session: si})
+		if m.isCollapsed(si) {
+			continue
+		}
 		for wi := range m.views[si].Worktrees {
-			m.rows = append(m.rows, rowRef{session: si, worktree: wi})
+			m.rows = append(m.rows, rowRef{kind: rowWorktree, session: si, worktree: wi})
 		}
 	}
 	if m.cursor >= len(m.rows) {
@@ -118,13 +141,123 @@ func (m *DashboardModel) rebuildRows() {
 	}
 }
 
-// selected returns the worktree under the cursor, or nil if the list is empty.
-func (m *DashboardModel) selected() *WorktreeView {
+// sessionKey is the stable identity used to track a session's fold state across
+// reloads. Sessions are keyed by their worktrees' SessionID (unique); the display
+// name is a fallback for the unexpected empty session.
+func sessionKey(sv SessionView) string {
+	if len(sv.Worktrees) > 0 {
+		return sv.Worktrees[0].SessionID
+	}
+	return sv.DisplayName
+}
+
+// isCollapsed reports whether the session at index si is folded.
+func (m *DashboardModel) isCollapsed(si int) bool {
+	return m.collapsed[sessionKey(m.views[si])]
+}
+
+// setCollapsed sets the fold state for the session at index si.
+func (m *DashboardModel) setCollapsed(si int, v bool) {
+	if m.collapsed == nil {
+		m.collapsed = map[string]bool{}
+	}
+	m.collapsed[sessionKey(m.views[si])] = v
+}
+
+// currentRow returns the row under the cursor, or nil if the list is empty.
+func (m *DashboardModel) currentRow() *rowRef {
 	if m.cursor < 0 || m.cursor >= len(m.rows) {
 		return nil
 	}
-	r := m.rows[m.cursor]
+	return &m.rows[m.cursor]
+}
+
+// selected returns the worktree under the cursor, or nil when the list is empty or
+// the cursor rests on a session header.
+func (m *DashboardModel) selected() *WorktreeView {
+	r := m.currentRow()
+	if r == nil || r.kind != rowWorktree {
+		return nil
+	}
 	return &m.views[r.session].Worktrees[r.worktree]
+}
+
+// selectedSession returns the session index under the cursor — valid on both header
+// and worktree rows — or -1 when the list is empty.
+func (m *DashboardModel) selectedSession() int {
+	r := m.currentRow()
+	if r == nil {
+		return -1
+	}
+	return r.session
+}
+
+// headerIndexForSession returns the row index of a session's header.
+func (m *DashboardModel) headerIndexForSession(si int) int {
+	for i, r := range m.rows {
+		if r.kind == rowSession && r.session == si {
+			return i
+		}
+	}
+	return m.cursor
+}
+
+// collapseSession folds a session and parks the cursor on its header so the row the
+// user was on never vanishes beneath them.
+func (m *DashboardModel) collapseSession(si int) {
+	m.setCollapsed(si, true)
+	m.rebuildRows()
+	m.cursor = m.headerIndexForSession(si)
+}
+
+// expandSession unfolds a session, keeping the cursor on its header.
+func (m *DashboardModel) expandSession(si int) {
+	m.setCollapsed(si, false)
+	m.rebuildRows()
+	m.cursor = m.headerIndexForSession(si)
+}
+
+// toggleFold flips a session's fold state (Enter/o on a header).
+func (m *DashboardModel) toggleFold(si int) {
+	if m.isCollapsed(si) {
+		m.expandSession(si)
+	} else {
+		m.collapseSession(si)
+	}
+}
+
+// foldLeft implements h/←: on a worktree, collapse its parent and jump to the header;
+// on an expanded header, collapse it; on a collapsed header, do nothing.
+func (m *DashboardModel) foldLeft() {
+	r := m.currentRow()
+	if r == nil {
+		return
+	}
+	if r.kind == rowWorktree || !m.isCollapsed(r.session) {
+		m.collapseSession(r.session)
+	}
+}
+
+// foldRightOrOpen implements l/→: expand a collapsed header, step into the first
+// child of an expanded header, or open a worktree (same as Enter). It returns a
+// tea.Cmd only when opening a worktree.
+func (m *DashboardModel) foldRightOrOpen() tea.Cmd {
+	r := m.currentRow()
+	if r == nil {
+		return nil
+	}
+	if r.kind == rowSession {
+		if m.isCollapsed(r.session) {
+			m.expandSession(r.session)
+		} else if len(m.views[r.session].Worktrees) > 0 && m.cursor < len(m.rows)-1 {
+			m.cursor++ // step into the first worktree
+		}
+		return nil
+	}
+	w := &m.views[r.session].Worktrees[r.worktree]
+	m.leaving = true
+	m.leaveSession, m.leaveWorktree = w.SessionID, w.Name
+	return tea.Quit
 }
 
 // needsYouCount counts worktrees whose status warrants attention.
@@ -190,10 +323,21 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor < len(m.rows)-1 {
 				m.cursor++
 			}
+		case "left", "h":
+			m.closePeek()
+			m.foldLeft()
+		case "right", "l":
+			m.closePeek()
+			if cmd := m.foldRightOrOpen(); cmd != nil {
+				return m, cmd
+			}
 		case "p":
 			m.togglePeek()
 		case "enter", "o":
-			if w := m.selected(); w != nil {
+			if r := m.currentRow(); r != nil && r.kind == rowSession {
+				m.closePeek()
+				m.toggleFold(r.session)
+			} else if w := m.selected(); w != nil {
 				// Record the target and quit cleanly; the cmd layer execs
 				// `eme switch` after bubbletea restores the terminal, so the
 				// shell is never left in raw/alt-screen state.
@@ -204,8 +348,9 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "n":
 			return m, m.runChild("new", "--no-switch")
 		case "c":
-			if w := m.selected(); w != nil {
-				return m, m.runChild("new", "--worktree", w.SessionID, "--no-switch")
+			// Create a worktree in the session under the cursor (header or worktree).
+			if si := m.selectedSession(); si >= 0 {
+				return m, m.runChild("new", "--worktree", sessionKey(m.views[si]), "--no-switch")
 			}
 		case "a":
 			if args, ok := m.AgentArgs(false); ok {
@@ -223,7 +368,11 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.runChild("clean", w.SessionID, w.Name)
 			}
 		case "d":
-			if w := m.selected(); w != nil {
+			if r := m.currentRow(); r != nil && r.kind == rowSession {
+				sv := m.views[r.session]
+				m.pending = &killTarget{sessionID: sessionKey(sv), isMain: true, label: "project " + sv.DisplayName}
+				m.notice = ""
+			} else if w := m.selected(); w != nil {
 				t := &killTarget{sessionID: w.SessionID, worktreeName: w.Name, isMain: w.IsMain}
 				if w.IsMain {
 					t.label = "project " + m.views[m.rows[m.cursor].session].DisplayName
@@ -276,24 +425,21 @@ func (m *DashboardModel) View() string {
 	lines = append(lines, fitLine(left, right, inner))
 	lines = append(lines, mutedStyle.Render(strings.Repeat("─", inner)))
 
-	// Tree body.
+	// Tree body. Iterate the flattened rows so the fold state and the cursor
+	// highlight read identically on session headers and worktrees.
 	if len(m.rows) == 0 {
 		lines = append(lines, "", mutedStyle.Render("No sessions. Press 'n' to create one."))
 	} else {
-		rowi := 0
-		for si := range m.views {
-			sv := m.views[si]
-			head := " " + sessionStyle.Render(fmt.Sprintf("%d  %s", si+1, sv.DisplayName))
-			rootStr := sv.Root
-			if rootMax := inner - lipgloss.Width(head) - 1; rootMax > 1 {
-				rootStr = truncate(sv.Root, rootMax)
+		for i, r := range m.rows {
+			switch r.kind {
+			case rowSession:
+				if i > 0 {
+					lines = append(lines, "") // breathe between sessions
+				}
+				lines = append(lines, m.sessionLine(r.session, i == m.cursor, inner))
+			case rowWorktree:
+				lines = append(lines, m.worktreeLine(m.views[r.session].Worktrees[r.worktree], i == m.cursor, inner))
 			}
-			lines = append(lines, fitLine(head, rootStyle.Render(rootStr), inner))
-			for wi := range sv.Worktrees {
-				lines = append(lines, m.worktreeLine(sv.Worktrees[wi], rowi == m.cursor, inner))
-				rowi++
-			}
-			lines = append(lines, "")
 		}
 	}
 
@@ -309,9 +455,9 @@ func (m *DashboardModel) View() string {
 		bottom = append(bottom, errorStyle.Render(m.notice))
 	}
 	if m.showHelp {
-		bottom = append(bottom, helpStyle.Render("↑↓/jk move · ↵/o open · p peek · n new · c worktree · a agent · A pick · x clean · d kill · q quit · ?"))
+		bottom = append(bottom, helpStyle.Render("↑↓/jk move · ←→/hl fold · ↵/o open · p peek · n new · c worktree · a agent · A pick · x clean · d kill · q quit · ?"))
 	} else {
-		bottom = append(bottom, helpStyle.Render("↑↓ move · ↵ open · n new · d kill · ? more · q quit"))
+		bottom = append(bottom, helpStyle.Render("↑↓/jk move · ←→/hl fold · ↵ open · n new · d kill · ? more · q quit"))
 	}
 	for len(lines)+len(bottom) < innerHeight {
 		lines = append(lines, "")
@@ -371,6 +517,56 @@ func (m *DashboardModel) worktreeLine(w WorktreeView, selected bool, inner int) 
 		bg(branchStyle).Render(branchRaw) + sep +
 		trailerCell
 
+	if selected {
+		if pad := inner - lipgloss.Width(row); pad > 0 {
+			row += bg(plain).Render(strings.Repeat(" ", pad))
+		}
+	}
+	return row
+}
+
+// sessionLine renders one session header row: a fold caret (▾ open · ▸ folded), the
+// session ordinal and name, and its root path right-aligned (with a hidden-count tail
+// when folded). Like worktreeLine it carries the cursor's surface lift and ▌ gutter,
+// so selection reads the same on a header as on a worktree (DESIGN.md §5.3).
+func (m *DashboardModel) sessionLine(si int, selected bool, inner int) string {
+	sv := m.views[si]
+	bg := func(s lipgloss.Style) lipgloss.Style {
+		if selected {
+			return s.Background(theme.Surface)
+		}
+		return s
+	}
+	plain := lipgloss.NewStyle()
+
+	gutter := bg(plain).Render("  ")
+	if selected {
+		gutter = selectedGutter.Render("▌") + bg(plain).Render(" ")
+	}
+
+	caret := "▾"
+	if m.isCollapsed(si) {
+		caret = "▸"
+	}
+	head := gutter + bg(rhymeStyle).Render(caret) + bg(plain).Render(" ") +
+		bg(sessionStyle).Render(fmt.Sprintf("%d  %s", si+1, sv.DisplayName))
+
+	tail := sv.Root
+	if m.isCollapsed(si) {
+		if n := len(sv.Worktrees); n > 0 {
+			tail = fmt.Sprintf("%s  (%d hidden)", sv.Root, n)
+		}
+	}
+	tailCell := bg(rootStyle).Render("")
+	if rootMax := inner - lipgloss.Width(head) - 1; rootMax > 1 {
+		tailCell = bg(rootStyle).Render(truncate(tail, rootMax))
+	}
+
+	gap := inner - lipgloss.Width(head) - lipgloss.Width(tailCell)
+	if gap < 1 {
+		gap = 1
+	}
+	row := head + bg(plain).Render(strings.Repeat(" ", gap)) + tailCell
 	if selected {
 		if pad := inner - lipgloss.Width(row); pad > 0 {
 			row += bg(plain).Render(strings.Repeat(" ", pad))
@@ -489,24 +685,37 @@ func (m *DashboardModel) tickReload() {
 	m.applyViews(views)
 }
 
-// applyViews swaps in a fresh view-model while keeping the cursor on the same
-// worktree by (session, worktree) identity — so an auto-refresh never makes the
-// selection jump under the user (ARCH-5). Falls back to the clamped index (from
-// rebuildRows) when the selected worktree is gone.
+// applyViews swaps in a fresh view-model while keeping the cursor on the same row by
+// identity — a session header by its session key, a worktree by (session, worktree) —
+// so an auto-refresh never makes the selection jump under the user (ARCH-5). Falls
+// back to the clamped index (from rebuildRows) when the row is gone.
 func (m *DashboardModel) applyViews(views []SessionView) {
-	var selID, selName string
-	if w := m.selected(); w != nil {
-		selID, selName = w.SessionID, w.Name
+	var wantSession string       // set when the cursor was on a session header
+	var wantSID, wantName string // set when the cursor was on a worktree
+	if r := m.currentRow(); r != nil {
+		if r.kind == rowSession {
+			wantSession = sessionKey(m.views[r.session])
+		} else {
+			w := m.views[r.session].Worktrees[r.worktree]
+			wantSID, wantName = w.SessionID, w.Name
+		}
 	}
 	m.views = views
 	m.rebuildRows()
-	if selID == "" {
-		return
-	}
 	for i, r := range m.rows {
-		if w := m.views[r.session].Worktrees[r.worktree]; w.SessionID == selID && w.Name == selName {
-			m.cursor = i
-			return
+		switch r.kind {
+		case rowSession:
+			if wantSession != "" && sessionKey(m.views[r.session]) == wantSession {
+				m.cursor = i
+				return
+			}
+		case rowWorktree:
+			if wantSID != "" {
+				if w := m.views[r.session].Worktrees[r.worktree]; w.SessionID == wantSID && w.Name == wantName {
+					m.cursor = i
+					return
+				}
+			}
 		}
 	}
 }

@@ -288,15 +288,19 @@ func PanePID(session, windowID string) (int, error) {
 type PaneInfo struct {
 	Dead       bool
 	DeadStatus int    // exit code when Dead; 0 otherwise
-	Command    string // pane_current_command — a secondary/label signal only
+	Command    string // pane_current_command — the foreground process (primary liveness signal)
+	EmeState   string // @eme_state pane user-option, pushed by an agent hook; "" when unset
 }
 
 // PanesSnapshot returns liveness for every pane on the server, keyed by window id.
 // One batched list-panes call replaces N per-worktree polls. A window maps to its
 // first pane (eme runs one pane per agent window).
 func PanesSnapshot() (map[string]PaneInfo, error) {
+	// The trailing #{@eme_state} reads a pane user-option an agent hook may push (see
+	// `eme hooks install`); it expands to "" when unset, so this is inert until hooks
+	// are installed and never changes behavior for un-hooked panes.
 	out, _, err := tmux("list-panes", "-a", "-F",
-		"#{window_id}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_current_command}")
+		"#{window_id}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_current_command}\t#{@eme_state}")
 	if err != nil {
 		return nil, fmt.Errorf("tmux list-panes -a: %w", err)
 	}
@@ -305,7 +309,7 @@ func PanesSnapshot() (map[string]PaneInfo, error) {
 		if line == "" {
 			continue
 		}
-		f := strings.SplitN(line, "\t", 4)
+		f := strings.SplitN(line, "\t", 5)
 		if len(f) < 4 {
 			continue
 		}
@@ -314,6 +318,12 @@ func PanesSnapshot() (map[string]PaneInfo, error) {
 			continue // first pane per window wins
 		}
 		info := PaneInfo{Dead: f[1] == "1", Command: f[3]}
+		// The 5th field (@eme_state) is read only when present: an unset option makes
+		// it empty, and the outer TrimSpace strips the last line's trailing tab, so the
+		// final pane legitimately arrives with 4 fields. Missing => EmeState "".
+		if len(f) >= 5 {
+			info.EmeState = strings.TrimSpace(f[4])
+		}
 		if info.Dead {
 			info.DeadStatus, _ = strconv.Atoi(strings.TrimSpace(f[2]))
 		}
@@ -322,13 +332,32 @@ func PanesSnapshot() (map[string]PaneInfo, error) {
 	return snap, nil
 }
 
-// SetRemainOnExit keeps a window's pane (and its exit status) alive after the
-// process exits, so status can read pane_dead/pane_dead_status. Set per agent
-// window at launch — not globally, so only eme's agent panes freeze on exit.
-func SetRemainOnExit(session, windowID string) error {
+// SetAgentState stamps the @eme_state pane user-option — the channel agent hooks use
+// to push real status (see `eme hooks install`), read back via #{@eme_state}. An empty
+// value clears it; eme does this at launch so a stale value from a prior agent never
+// lingers and misleads the dashboard before the new agent's first hook fires.
+func SetAgentState(session, windowID, state string) error {
 	target := session + ":" + windowID
-	if _, _, err := tmux("set-option", "-w", "-t", target, "remain-on-exit", "on"); err != nil {
-		return fmt.Errorf("tmux set remain-on-exit: %w", err)
+	if _, _, err := tmux("set-option", "-p", "-t", target, "@eme_state", state); err != nil {
+		return fmt.Errorf("tmux set @eme_state %q: %w", state, err)
+	}
+	return nil
+}
+
+// SetRemainOnExit toggles a window's remain-on-exit. With on, the pane (and its
+// exit status) is kept after the process exits so status can read
+// pane_dead/pane_dead_status — set per agent window at launch (not globally, so only
+// eme's agent panes freeze on exit). With off, a later plain-shell exit closes the
+// pane normally instead of re-deading it; reviving a dead pane to a bare shell uses
+// this so an idle shell the user exits never paints a false crashed/exited beacon.
+func SetRemainOnExit(session, windowID string, on bool) error {
+	target := session + ":" + windowID
+	val := "off"
+	if on {
+		val = "on"
+	}
+	if _, _, err := tmux("set-option", "-w", "-t", target, "remain-on-exit", val); err != nil {
+		return fmt.Errorf("tmux set remain-on-exit %s: %w", val, err)
 	}
 	return nil
 }

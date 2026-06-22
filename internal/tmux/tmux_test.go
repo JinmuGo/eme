@@ -53,6 +53,37 @@ func TestTmux_NoSocketLeavesArgsUntouched(t *testing.T) {
 	}
 }
 
+// TestPanesSnapshot_ParsesEmeStateAndLastPane guards two things: the @eme_state field
+// is read into PaneInfo, and the LAST pane is NOT dropped when its @eme_state is empty
+// — the outer TrimSpace strips that final line's trailing tab, leaving only 4 fields,
+// so the parse must tolerate a missing 5th field.
+func TestPanesSnapshot_ParsesEmeStateAndLastPane(t *testing.T) {
+	oldRunner, oldSocket := Runner, Socket
+	mock := runner.NewMock()
+	Runner, Socket = mock, ""
+	defer func() { Runner, Socket = oldRunner, oldSocket }()
+
+	format := "#{window_id}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_current_command}\t#{@eme_state}"
+	// Last pane has an empty @eme_state + trailing tab, exactly the dropped-pane case.
+	out := "@1\t0\t0\tnode\twaiting\n@2\t0\t0\tzsh\t\n"
+	mock.Set("tmux", []string{"list-panes", "-a", "-F", format}, out, "", nil)
+
+	snap, err := PanesSnapshot()
+	if err != nil {
+		t.Fatalf("PanesSnapshot: %v", err)
+	}
+	if a := snap["@1"]; a.EmeState != "waiting" || a.Command != "node" || a.Dead {
+		t.Errorf("@1 = %+v, want {Command:node EmeState:waiting Dead:false}", a)
+	}
+	b, ok := snap["@2"]
+	if !ok {
+		t.Fatal("@2 (last pane, empty @eme_state) was dropped — trailing-tab parse regression")
+	}
+	if b.EmeState != "" || b.Command != "zsh" {
+		t.Errorf(`@2 = %+v, want {Command:zsh EmeState:""}`, b)
+	}
+}
+
 // TestClientOnManagedServer covers the switch-vs-attach decision: switch-client
 // only moves the user when their client is attached to eme's pinned server.
 func TestClientOnManagedServer(t *testing.T) {

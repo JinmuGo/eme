@@ -3,15 +3,18 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
 	"github.com/jinmu/eme/internal/config"
 	"github.com/jinmu/eme/internal/errors"
-	"github.com/jinmu/eme/internal/runner"
 	"github.com/jinmu/eme/internal/state"
 	"github.com/jinmu/eme/internal/tmux"
 	"github.com/jinmu/eme/internal/tui"
@@ -22,8 +25,99 @@ var (
 	agentPick   bool
 )
 
-// lookPath is the PATH lookup seam (swapped in tests).
-var lookPath = exec.LookPath
+// lookPath resolves an agent binary (swapped in tests). It defaults to a resolver
+// enriched with the user's login-shell PATH: eme usually runs inside a tmux popup,
+// which inherits the tmux server's minimal PATH — often missing per-user bin dirs
+// like ~/.local/bin (where Claude Code installs `claude`). A plain exec.LookPath
+// there misreports such agents as "not installed", and the agent's own pane (a login
+// shell) could in fact run them. Enriching the lookup keeps detection and the launch
+// pre-check in step with what the pane can actually execute.
+var lookPath = enrichedLookPath
+
+// enrichedLookPath resolves bin on the process PATH first, then on the user's
+// login-shell PATH, so an agent that is on the interactive PATH but not the popup's
+// minimal PATH still resolves.
+func enrichedLookPath(bin string) (string, error) {
+	if p, err := exec.LookPath(bin); err == nil {
+		return p, nil
+	}
+	if p, ok := findOnPath(bin, loginShellPATH()); ok {
+		return p, nil
+	}
+	return "", fmt.Errorf("%q not found on PATH", bin)
+}
+
+var (
+	loginPathOnce sync.Once
+	loginPathVal  string
+)
+
+// loginShellPATH returns the PATH the user's login + interactive shell would build
+// (sourcing .zprofile/.zshrc, where tools like mise and ~/.local/bin are added),
+// captured once per process. Empty when it cannot be determined.
+func loginShellPATH() string {
+	loginPathOnce.Do(func() { loginPathVal = captureLoginShellPATH() })
+	return loginPathVal
+}
+
+// captureLoginShellPATH runs the user's shell as a login + interactive shell and
+// reads back its $PATH, fenced by unit-separator bytes so any banner the rc files
+// print is ignored. Best-effort with a short timeout; "" on any failure.
+func captureLoginShellPATH() string {
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, shell, "-lic", `printf '\037%s\037' "$PATH"`)
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	const sep = "\x1f" // ASCII unit separator — never appears in a PATH
+	_, after, ok := strings.Cut(string(out), sep)
+	if !ok {
+		return ""
+	}
+	val, _, ok := strings.Cut(after, sep)
+	if !ok {
+		return ""
+	}
+	return val
+}
+
+// findOnPath looks bin up across the directories in pathList (a PATH-style string),
+// returning the first executable match.
+func findOnPath(bin, pathList string) (string, bool) {
+	if pathList == "" {
+		return "", false
+	}
+	if strings.ContainsRune(bin, filepath.Separator) {
+		if isExecutableFile(bin) {
+			return bin, true
+		}
+		return "", false
+	}
+	for _, dir := range filepath.SplitList(pathList) {
+		if dir == "" {
+			continue
+		}
+		if p := filepath.Join(dir, bin); isExecutableFile(p) {
+			return p, true
+		}
+	}
+	return "", false
+}
+
+// isExecutableFile reports whether p is a regular file with an executable bit set.
+func isExecutableFile(p string) bool {
+	info, err := os.Stat(p)
+	if err != nil || info.IsDir() {
+		return false
+	}
+	return info.Mode()&0o111 != 0
+}
 
 // pickAgent runs the interactive agent picker. Swapped in tests.
 var pickAgent = runAgentPicker
@@ -151,17 +245,17 @@ func launchAgentCommand(s *state.State, sess *state.Session, w *state.Worktree, 
 			"Set agent.command in ~/.config/eme/config.toml.")
 	}
 	binary := fields[0]
-	if _, _, err := runner.Default.Run(context.Background(), "which", binary); err != nil {
+	if _, err := lookPath(binary); err != nil {
 		return errors.New(errors.CodeAgentNotFound,
 			fmt.Sprintf("Configured agent %q not found on PATH.", binary),
 			"The agent binary is not executable or not installed.",
 			"Install it or set agent.command in ~/.config/eme/config.toml.")
 	}
 
-	// Defense in depth: never send `exec <cmd>` into a pane that already runs a live
-	// agent — it would land as literal keystrokes in the agent's TUI and corrupt both
-	// the session and the exit status the dashboard reads. Best-effort: if pane state is
-	// unreadable, proceed with the user's explicit launch.
+	// Defense in depth: never send a command into a pane whose foreground is already a
+	// live agent (or any running command) — it would land as literal keystrokes in that
+	// TUI. Best-effort: if pane state is unreadable, proceed with the user's explicit
+	// launch.
 	if running, err := agentRunningFn(w); err == nil && running {
 		return errors.New(errors.CodeCommandFailed,
 			"An agent is already running in this worktree.",
@@ -171,32 +265,32 @@ func launchAgentCommand(s *state.State, sess *state.Session, w *state.Worktree, 
 
 	target := sess.TmuxName + ":" + w.TmuxWindowID
 
-	// Revive a dead pane left by a prior exec'd agent (best-effort: a live pane
-	// errors harmlessly, a dead one returns to a fresh shell in the worktree).
+	// Revive the pane to a fresh shell if a prior one was left dead (best-effort: a
+	// live pane no-ops). Drop remain-on-exit so the shell that now hosts the agent
+	// closes normally on exit instead of freezing into a dead pane.
 	_ = tmux.RespawnPane(sess.TmuxName, w.TmuxWindowID, w.Path)
-	// Keep the pane and its exit status after the agent exits, so status can read
-	// exited vs crashed via pane_dead/pane_dead_status (DESIGN.md §5.4). Per window.
-	_ = tmux.SetRemainOnExit(sess.TmuxName, w.TmuxWindowID)
+	_ = tmux.SetRemainOnExit(sess.TmuxName, w.TmuxWindowID, false)
+	// Clear any @eme_state a previous agent's hook left on this pane, so the dashboard
+	// reads the foreground heuristic until the new agent's first hook fires (rather than
+	// a stale waiting/idle from the last session).
+	_ = tmux.SetAgentState(sess.TmuxName, w.TmuxWindowID, "")
 
-	// exec so the agent REPLACES the shell and becomes the pane's own process; its
-	// exit code then surfaces via #{pane_dead_status} (T0 experiment 2026-06-21).
-	// Without exec the agent is a shell child, the shell survives its exit, and the
-	// pane never reports a status.
-	if err := sendKeys(target, "exec "+command); err != nil {
+	// Run the agent as a CHILD of the pane's shell (no exec): the shell survives the
+	// agent's exit, so quitting the agent returns to a prompt instead of a dead pane.
+	// Liveness/status then read the pane's foreground process, not pane_dead.
+	if err := sendKeys(target, command); err != nil {
 		return errors.Wrap(errors.CodeCommandFailed,
 			"Could not send agent command to tmux pane.",
 			"tmux send-keys failed.",
 			"Verify the tmux window still exists.", err)
 	}
 
-	// Best-effort: record pane PID (under exec this is the agent's own PID). Store
-	// the bare command (no exec prefix) so the status label reads the agent name.
-	if pid, err := tmux.PanePID(sess.TmuxName, w.TmuxWindowID); err == nil {
-		w.AgentPID = pid
-		w.LastAgentCommand = command
-		if err := saveState(s); err != nil {
-			return err
-		}
+	// Record the agent name for the status label. Liveness is read from the pane's
+	// foreground process, not a pid, so we deliberately record NO pid: the pane process
+	// is the shell and the agent is its child, so a pane pid would mislead.
+	w.LastAgentCommand = command
+	if err := saveState(s); err != nil {
+		return err
 	}
 
 	fmt.Printf("Started agent in %s/%s\n", sess.DisplayName, w.Name)
@@ -252,10 +346,10 @@ func toggleAgent(s *state.State, sess *state.Session, w *state.Worktree) error {
 			"Set agent.command in ~/.config/eme/config.toml.")
 	}
 
-	// Decide stop-vs-launch off pane liveness (pane_dead), not a recorded pid: under the
-	// exec model the agent IS the pane process, so a recorded pid goes stale the instant
-	// it exits, and a stale "not running" reading would relaunch — typing `exec …` into a
-	// live agent's TUI. Keying off the pane keeps a surviving agent on the stop path.
+	// Decide stop-vs-launch off the pane's foreground process, not a recorded pid: the
+	// agent runs as a child of the shell, so a non-shell foreground means an agent is
+	// active (→ stop with C-c, which returns the pane to its shell) and a shell prompt
+	// means none is (→ launch). This keeps a launch from typing into a live agent.
 	running, err := agentRunningFn(w)
 	if err != nil {
 		return err
@@ -282,12 +376,13 @@ func toggleAgent(s *state.State, sess *state.Session, w *state.Worktree) error {
 	return launchAgentCommand(s, sess, w, command)
 }
 
-// agentRunning reports whether an agent is currently live in the worktree's pane.
-// It keys off pane_dead — the same ground truth the dashboard uses — not a recorded
-// pid, which goes stale the instant an exec'd agent exits (under exec the agent IS the
-// pane process). An agent is running iff its pane is present, not dead, and an agent
-// was launched there. Keeping stop/launch decisions on this signal ensures a relaunch
-// never types `exec …` into a live agent's TUI.
+// agentRunning reports whether something is running in the worktree pane's
+// foreground. Under the child-process launch model the agent runs as a child of the
+// pane's shell, so the pane survives the agent's exit; liveness is read from the
+// FOREGROUND process (pane_current_command), not pane_dead or a recorded pid. The
+// pane is "running" iff it is present, not dead, and its foreground is not an
+// interactive shell — which keeps stop/launch decisions from typing a command into a
+// pane that already has the agent (or any command) in the foreground.
 func agentRunning(w *state.Worktree) (bool, error) {
 	snap, err := tmux.PanesSnapshot()
 	if err != nil {
@@ -297,7 +392,7 @@ func agentRunning(w *state.Worktree) (bool, error) {
 			"Verify the tmux server is reachable.", err)
 	}
 	info, present := snap[w.TmuxWindowID]
-	return present && !info.Dead && w.LastAgentCommand != "", nil
+	return present && !info.Dead && !isShellCommand(info.Command), nil
 }
 
 func init() {

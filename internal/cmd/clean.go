@@ -13,9 +13,10 @@ import (
 var cleanCmd = &cobra.Command{
 	Use:   "clean <session> [worktree]",
 	Short: "Clear a finished agent's dead pane, returning the worktree to idle",
-	Long: `Revive the worktree's frozen pane — left behind when an exec'd agent exits or
-crashes under remain-on-exit — back to a fresh shell, and clear the recorded agent so
-the worktree reads idle again, ready for a new one.
+	Long: `Revive the worktree's pane back to a fresh shell and clear the recorded agent
+so the worktree reads idle again, ready for a new one. Under the child-process launch
+model a quit agent already returns to a live shell, so a frozen ("dead") pane is rare —
+this recovers one left by a manually killed/exited pane (or a legacy exec'd agent).
 
 It refuses while an agent is still live, so it never clears the record out from under
 a running agent. The dashboard binds this to 'x' on a crashed or exited worktree.`,
@@ -70,7 +71,44 @@ func cleanWorktree(sess *state.Session, w *state.Worktree) error {
 			"Stop it first (press a), then clean.")
 	}
 	_ = tmux.RespawnPane(sess.TmuxName, w.TmuxWindowID, w.Path)
+	// The revived pane hosts a plain shell, not an exec'd agent, so drop
+	// remain-on-exit: otherwise a later normal shell exit re-deads the pane and
+	// paints a false exited/crashed beacon. A real agent launch re-sets it on.
+	_ = tmux.SetRemainOnExit(sess.TmuxName, w.TmuxWindowID, false)
 	w.LastAgentCommand = ""
 	w.AgentPID = 0
 	return nil
+}
+
+// reviveIfDead revives a worktree's pane only when it is dead — frozen by an exec'd
+// agent that exited or crashed under remain-on-exit — back to a fresh shell, and
+// clears the recorded agent so status reads idle. Unlike cleanWorktree it never
+// refuses: a live agent's pane is not dead, so this no-ops there, and likewise on an
+// idle shell. Best-effort (a failed snapshot or respawn is ignored). Callers use it
+// so switching into an exited worktree lands on a usable shell instead of a "Pane is
+// dead" screen; `p` (peek) still inspects a dead pane without reviving it.
+func reviveIfDead(s *state.State, sess *state.Session, w *state.Worktree) {
+	snap, err := tmux.PanesSnapshot()
+	if err != nil {
+		return
+	}
+	if info, ok := snap[w.TmuxWindowID]; !ok || !info.Dead {
+		return
+	}
+	// Gate the record clear on the respawn actually succeeding: the -k-less respawn
+	// fails harmlessly if the pane is no longer dead (e.g. a concurrent eme already
+	// revived it and a fresh agent is live), and clearing then would misreport that
+	// live agent as idle.
+	if err := tmux.RespawnPane(sess.TmuxName, w.TmuxWindowID, w.Path); err != nil {
+		return
+	}
+	// The revived pane is a plain shell, so drop remain-on-exit (a real agent launch
+	// re-sets it on); otherwise a later normal shell exit re-deads it as a false
+	// exited/crashed beacon.
+	_ = tmux.SetRemainOnExit(sess.TmuxName, w.TmuxWindowID, false)
+	if w.LastAgentCommand != "" || w.AgentPID != 0 {
+		w.LastAgentCommand = ""
+		w.AgentPID = 0
+		_ = saveState(s)
+	}
 }

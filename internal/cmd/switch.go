@@ -45,6 +45,13 @@ var switchCmd = &cobra.Command{
 			return err
 		}
 
+		// If the worktree's pane is frozen dead — a pane the user manually killed/exited,
+		// or one left by a legacy exec'd agent under remain-on-exit — switching in would
+		// drop the user onto a "Pane is dead" screen. Revive it to a fresh shell first so
+		// they land on a usable pane. Live agents and idle shells are left untouched.
+		// (Rare under the child-process model: a quit agent already returns to its shell.)
+		reviveIfDead(s, sess, w)
+
 		if tmux.ClientOnManagedServer() {
 			if err := tmux.SwitchClient(sess.TmuxName, w.TmuxWindowID); err != nil {
 				return errors.Wrap(errors.CodeCommandFailed,

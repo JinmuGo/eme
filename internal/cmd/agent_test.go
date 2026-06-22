@@ -124,8 +124,8 @@ func TestChooseAndLaunchAgent_AppliesAndLaunchesOnSelection(t *testing.T) {
 	if applied != "claude" {
 		t.Errorf("apply got %q, want claude", applied)
 	}
-	if line != "exec claude" {
-		t.Errorf("launched line = %q, want %q (exec-prefixed, no path arg)", line, "exec claude")
+	if line != "claude" {
+		t.Errorf("launched line = %q, want %q (bare command, child of shell)", line, "claude")
 	}
 }
 
@@ -205,10 +205,10 @@ func TestLaunchAgentCommand_SendsBareCommand(t *testing.T) {
 	if gotTarget != "myapp:@1" {
 		t.Errorf("target = %q, want %q", gotTarget, "myapp:@1")
 	}
-	// exec-prefixed so the agent replaces the shell and surfaces its exit status
-	// (T0 finding). The pane cwd is already the worktree, so still NO path arg.
-	if gotLine != "exec claude" {
-		t.Errorf("sent line = %q, want %q (exec prefix, no path arg)", gotLine, "exec claude")
+	// Bare command: the agent runs as a child of the pane's shell (no exec). The pane
+	// cwd is already the worktree, so still NO path arg.
+	if gotLine != "claude" {
+		t.Errorf("sent line = %q, want %q (bare command, no exec/path)", gotLine, "claude")
 	}
 }
 
@@ -246,8 +246,8 @@ func TestPickWorktreeAgent_RefusesWhenAgentRunning(t *testing.T) {
 }
 
 // TestLaunchAgentCommand_RefusesWhenAgentRunning locks the defense-in-depth guard:
-// a launch must never send `exec …` into a pane that already has a live agent (it
-// would land as literal keystrokes in the agent's TUI and corrupt its exit status).
+// a launch must never send a command into a pane that already has a live agent (it
+// would land as literal keystrokes in the agent's TUI).
 func TestLaunchAgentCommand_RefusesWhenAgentRunning(t *testing.T) {
 	stubWhich(t, "claude")
 	stubAgentRunning(t, true, nil) // a live agent already occupies the pane
@@ -270,8 +270,8 @@ func TestLaunchAgentCommand_RefusesWhenAgentRunning(t *testing.T) {
 	}
 }
 
-// TestToggleAgent_LaunchesWhenPaneIdle: with no live agent (pane idle/dead), the
-// toggle routes to launch — exec-prefixed, per the T1 launch model.
+// TestToggleAgent_LaunchesWhenPaneIdle: with no live agent (shell prompt), the
+// toggle routes to launch — a bare command run as a child of the shell.
 func TestToggleAgent_LaunchesWhenPaneIdle(t *testing.T) {
 	tempState(t)
 	stubWhich(t, "claude")
@@ -286,14 +286,14 @@ func TestToggleAgent_LaunchesWhenPaneIdle(t *testing.T) {
 	if err := toggleAgent(s, sess, w); err != nil {
 		t.Fatalf("toggleAgent: %v", err)
 	}
-	if gotLine != "exec claude" {
-		t.Errorf("idle toggle should launch via exec; sent %q, want %q", gotLine, "exec claude")
+	if gotLine != "claude" {
+		t.Errorf("idle toggle should launch a bare command; sent %q, want %q", gotLine, "claude")
 	}
 }
 
 // TestToggleAgent_StopsWhenAgentRunning locks the core safety property of the
 // lifecycle fix: a live agent is interrupted (C-c), NEVER relaunched — relaunching
-// would type `exec …` into the running agent's pane. tmux.SendKey fails here (no
+// would type a command into the running agent's pane. tmux.SendKey fails here (no
 // server), but the assertion is that the launch seam was never reached.
 func TestToggleAgent_StopsWhenAgentRunning(t *testing.T) {
 	tempState(t)

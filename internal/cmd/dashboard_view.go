@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -60,17 +61,60 @@ func buildViews(sessions []state.Session, snap map[string]tmux.PaneInfo, withDif
 	return views
 }
 
-// classifyStatus derives a worktree's agent lifecycle from its pane snapshot. It
-// keys off pane_dead (structural), NOT pane_current_command == agent name, because
-// an interactive agent runs under a different process name (claude runs as `node`,
-// verified by the T0 experiment). Under the exec launch model the agent IS the pane
-// process, so its exit status surfaces directly:
+// shellCommands are the foreground process names that mean "the pane is sitting at an
+// interactive shell prompt" — i.e. no agent is running. A leading '-' (login shell,
+// e.g. -zsh) is trimmed before the lookup. The user's own $SHELL is recognized on top
+// of this set (userShellBase), so an unusual shell still reads idle.
+var shellCommands = map[string]bool{
+	"sh": true, "bash": true, "zsh": true, "fish": true,
+	"dash": true, "ksh": true, "tcsh": true, "csh": true, "ash": true,
+	"nu": true, "nushell": true, "xonsh": true, "elvish": true,
+	"pwsh": true, "powershell": true, "osh": true, "ion": true,
+}
+
+// isShellCommand reports whether a pane_current_command means the pane is at an
+// interactive shell prompt (nothing running in the foreground). An empty/unresolved
+// command biases to idle — the safe default: never assert a running agent we cannot
+// see (which would also falsely block a launch). The user's own $SHELL basename always
+// counts, in addition to the common-shell set.
+func isShellCommand(cmd string) bool {
+	cmd = strings.TrimPrefix(strings.TrimSpace(cmd), "-")
+	if cmd == "" {
+		return true
+	}
+	base := filepath.Base(cmd)
+	if base == userShellBase() {
+		return true
+	}
+	return shellCommands[base]
+}
+
+// userShellBase is the basename of the user's configured login shell ($SHELL), so a
+// pane sitting at that shell's prompt always reads idle even when the shell is not in
+// shellCommands. Empty when $SHELL is unset (then only the common set applies).
+func userShellBase() string {
+	sh := os.Getenv("SHELL")
+	if sh == "" {
+		return ""
+	}
+	return filepath.Base(sh)
+}
+
+// classifyStatus derives a worktree's agent lifecycle from its pane snapshot. Under
+// the child-process launch model the agent runs as a CHILD of the pane's shell (not
+// via exec), so the pane stays alive across the agent's exit; "is an agent running"
+// is read from the pane's FOREGROUND process, not pane_dead: a shell foreground means
+// the prompt is idle, anything else means a command (the agent) is in the foreground.
 //
-//	window gone, agent ran → exited
-//	pane dead, status 0    → exited (clean)  ○
-//	pane dead, status != 0 → crashed         ✗
-//	pane alive, agent ran  → running         ◐  (working|waiting lumped, DESIGN.md §5.2)
-//	pane alive, no agent   → idle            ·
+//	window gone, agent ran     → exited
+//	pane dead (manual exit), 0 → exited  ○   · non-zero → crashed ✗  (rare now)
+//	pane alive, shell prompt   → idle    ·  (ground truth: nothing in the foreground)
+//	pane alive, agent running  → @eme_state if a hook pushed one, else working ◐
+//
+// When an agent hook has stamped @eme_state into the pane (see `eme hooks install`),
+// it refines the live non-shell case into working/waiting/done/crashed. A shell
+// foreground still wins as idle regardless of @eme_state, so a stale value left by a
+// crashed agent (which returns to the shell) can never mask a now-idle pane.
 //
 // present is false when the worktree's window has no pane in the snapshot.
 func classifyStatus(info tmux.PaneInfo, present bool, lastAgentCmd string) tui.AgentStatus {
@@ -81,15 +125,38 @@ func classifyStatus(info tmux.PaneInfo, present bool, lastAgentCmd string) tui.A
 		return tui.StatusIdle
 	}
 	if info.Dead {
+		// Rare under the child-process model — only a pane the user manually exited
+		// or killed dies; kept so such a pane still classifies sensibly.
 		if info.DeadStatus == 0 {
 			return tui.StatusExited
 		}
 		return tui.StatusCrashed
 	}
-	if lastAgentCmd == "" {
-		return tui.StatusIdle // a live shell that never ran an agent
+	if isShellCommand(info.Command) {
+		return tui.StatusIdle // shell prompt is ground truth: nothing running in the foreground
+	}
+	if s, ok := emeState(info.EmeState); ok {
+		return s // a hook told us the precise sub-state of the running agent
 	}
 	return tui.StatusWorking
+}
+
+// emeState maps a hook-pushed @eme_state value to a status. It is only consulted for a
+// live, non-shell pane (something is running); an empty or unrecognized value returns
+// ok=false so the caller falls back to the foreground heuristic.
+func emeState(v string) (tui.AgentStatus, bool) {
+	switch strings.TrimSpace(v) {
+	case "working":
+		return tui.StatusWorking, true
+	case "waiting":
+		return tui.StatusWaiting, true
+	case "idle", "done":
+		return tui.StatusIdle, true
+	case "crashed", "error":
+		return tui.StatusCrashed, true
+	default:
+		return tui.StatusIdle, false
+	}
 }
 
 // agentLabel returns the agent binary's basename from the command that started it,

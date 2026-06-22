@@ -23,11 +23,14 @@ func captureExec(t *testing.T, got *[]string, called *bool) {
 }
 
 func dashboardWith(name, worktree string, isMain bool) *tui.DashboardModel {
-	return tui.NewDashboard([]tui.SessionView{
+	m := tui.NewDashboard([]tui.SessionView{
 		{DisplayName: name, Worktrees: []tui.WorktreeView{
 			{Name: worktree, SessionID: name, IsMain: isMain},
 		}},
 	}, nil)
+	// Row 0 is the session header; step onto the worktree row these tests target.
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	return m
 }
 
 // Enter on a worktree must hand the cmd layer the right `eme switch` argv.
