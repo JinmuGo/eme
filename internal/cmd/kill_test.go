@@ -33,6 +33,21 @@ func TestKillSession_InPlaceNeverDeletesRoot(t *testing.T) {
 	}
 }
 
+// TestKillSession_PlainDeletesNothing guards plain (non-git) projects: eme created
+// nothing on disk for them, so killing must delete no paths. In particular it must
+// NOT target <root>/main or <root>/.bare, which could wipe a real subdirectory the
+// user happens to have inside their adopted folder.
+func TestKillSession_PlainDeletesNothing(t *testing.T) {
+	sess := &state.Session{
+		Root:      "/p/multirepo",
+		Layout:    state.LayoutPlain,
+		Worktrees: []state.Worktree{{Name: "main", Path: "/p/multirepo"}},
+	}
+	if got := pathsToDeleteForKill(sess); len(got) != 0 {
+		t.Fatalf("plain kill must delete nothing, got %v", got)
+	}
+}
+
 func TestKillSession_NestedBareDeletesContainer(t *testing.T) {
 	sess := &state.Session{Root: "/p/app", Layout: state.LayoutNestedBare}
 	got := pathsToDeleteForKill(sess)

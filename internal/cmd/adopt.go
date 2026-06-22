@@ -103,6 +103,76 @@ func adoptInPlace(root string) error {
 	return nil
 }
 
+// adoptPlain registers a non-git folder as a plain in-place project: the folder
+// itself is the single "main" worktree and the agent runs there directly. There
+// is no .bare, no nested main/, and no git worktree management (a plain project
+// cannot spawn worktrees). Used for content-rich, non-git folders such as a
+// multi-repo parent directory that you want to drive a top-level agent in.
+func adoptPlain(root string) error {
+	if err := requireTmuxServer(); err != nil {
+		return err
+	}
+	s, err := loadState()
+	if err != nil {
+		return err
+	}
+
+	sessID := session.ID(root)
+	if s.SessionByID(sessID) != nil {
+		return errors.New(errors.CodeSessionExists,
+			fmt.Sprintf("session %s is already managed by eme.", session.DisplayName(root)),
+			"The folder is already registered.",
+			"Run `eme` and press Enter to switch to it.")
+	}
+
+	displayName := session.DisplayName(root)
+	tmuxName := session.UniqueTmuxName(displayName, func(name string) bool {
+		if tmux.SessionExists(name) {
+			return true
+		}
+		for i := range s.Sessions {
+			if s.Sessions[i].TmuxName == name {
+				return true
+			}
+		}
+		return false
+	})
+
+	windowID, err := tmux.NewSession(tmuxName, "main", root)
+	if err != nil {
+		return errors.Wrap(errors.CodeCommandFailed,
+			"Failed to create tmux session.",
+			"tmux new-session failed.",
+			"Run `eme doctor` to verify tmux.", err)
+	}
+
+	sess := state.Session{
+		ID:           sessID,
+		DisplayName:  displayName,
+		Root:         root,
+		Layout:       state.LayoutPlain,
+		TmuxName:     tmuxName,
+		AgentCommand: cfg.Agent.Command,
+		Worktrees: []state.Worktree{{
+			Name:         "main",
+			Path:         root,
+			TmuxWindowID: windowID,
+		}},
+	}
+	s.AddSession(sess)
+	if err := saveState(s); err != nil {
+		_ = tmux.KillSession(tmuxName)
+		return err
+	}
+
+	fmt.Printf("Adopted %q in place at %s (plain folder — no git worktrees)\n", displayName, root)
+	if stored := s.SessionByID(sessID); stored != nil {
+		maybeOnboardAgent(s, stored)
+	}
+	maybeSwitchClient(tmuxName, windowID)
+	return nil
+}
+
 // excludeFromParentRepo appends worktreeDir's basename to the enclosing repo's
 // .git/info/exclude (local, never committed) when worktreeDir's parent is itself
 // a git work tree. No-op otherwise.

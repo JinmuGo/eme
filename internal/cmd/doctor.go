@@ -61,10 +61,22 @@ func doctorFolder(folder string) error {
 		return err
 	}
 	fmt.Printf("folder: %s\nkind:   %s\n", abs, kindLabel(c.Kind))
-	if c.Kind == git.KindNormalRoot {
+	switch c.Kind {
+	case git.KindNormalRoot:
 		wt, derr := config.WorktreeDirFor(cfg.Worktree.DirTemplate, c.TopLevel)
 		if derr == nil {
 			fmt.Printf("adopt:  worktrees would go to %s\n", wt)
+		}
+	case git.KindGreenfield:
+		// For a non-git folder, eme's action depends on whether it already has
+		// content: an empty folder is scaffolded into a new project, a folder
+		// with content is adopted in place as a plain (non-git) project.
+		if empty, eerr := dirIsEffectivelyEmpty(abs); eerr == nil {
+			if empty {
+				fmt.Printf("action: empty → scaffold a new nested-bare project (.bare + main/)\n")
+			} else {
+				fmt.Printf("action: has content → adopt in place as a plain folder (agent runs here; no git worktrees)\n")
+			}
 		}
 	}
 	return nil

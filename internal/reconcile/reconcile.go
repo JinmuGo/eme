@@ -61,6 +61,12 @@ func worktreeExists(sess state.Session, w state.Worktree) bool {
 	if _, ok := windows[w.TmuxWindowID]; !ok {
 		return false
 	}
+	// A plain (non-git) project has no git worktree to validate or prune; the
+	// directory + tmux window existing is the whole liveness check. Running the
+	// git checks below would error (not a repo) and wrongly prune it away.
+	if sess.Layout == state.LayoutPlain {
+		return true
+	}
 	// Check git worktree exists.
 	if _, err := git.TopLevel(w.Path); err != nil {
 		return false

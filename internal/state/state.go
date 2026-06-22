@@ -16,6 +16,11 @@ const Version = 1
 const (
 	LayoutNestedBare = "nested-bare"
 	LayoutInPlace    = "in-place"
+	// LayoutPlain is a folder eme runs an agent in directly, with no git
+	// management: the root is the single "main" worktree, there is no .bare and
+	// no nested main/, and worktree creation is unavailable (no git). Used to
+	// adopt a non-git folder (e.g. a multi-repo parent dir) in place.
+	LayoutPlain = "plain"
 )
 
 // Worktree represents one linked worktree inside a project.
@@ -148,7 +153,7 @@ func (s *Session) WorktreeByName(name string) *Worktree {
 
 // MainPath returns the working directory of the project's main worktree.
 func (s *Session) MainPath() string {
-	if s.Layout == LayoutInPlace {
+	if s.Layout == LayoutInPlace || s.Layout == LayoutPlain {
 		return s.Root
 	}
 	return filepath.Join(s.Root, "main")

@@ -63,6 +63,14 @@ var killCmd = &cobra.Command{
 // pathsToDeleteForKill returns the on-disk paths that killing the whole session
 // removes. For in-place layouts the adopted clone root is NEVER included.
 func pathsToDeleteForKill(sess *state.Session) []string {
+	// A plain (non-git) project created nothing on disk — eme only ran an agent in
+	// the user's existing folder — so killing it deletes NOTHING (it just forgets
+	// the session and kills the tmux session). Falling through to the nested-bare
+	// branch below would target <root>/main and <root>/.bare, wiping a real
+	// subdirectory the user happens to have by that name.
+	if sess.Layout == state.LayoutPlain {
+		return nil
+	}
 	if sess.Layout == state.LayoutInPlace {
 		var paths []string
 		for _, w := range sess.Worktrees {

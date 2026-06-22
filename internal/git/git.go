@@ -83,10 +83,161 @@ func WorktreeAddAt(repoDir, targetPath, branch string, newBranch bool) error {
 	} else {
 		args = append(args, targetPath)
 	}
-	if _, _, err := Run(context.Background(), repoDir, args...); err != nil {
+	if _, stderr, err := Run(context.Background(), repoDir, args...); err != nil {
+		// Surface git's own message (e.g. "fatal: cannot lock ref ...") instead of
+		// only the exit status, so the failure is self-diagnosable. git writes the
+		// reason to stderr; fall back to the raw error when it is empty.
+		if msg := strings.TrimSpace(stderr); msg != "" {
+			return fmt.Errorf("git worktree add %s: %s", targetPath, msg)
+		}
 		return fmt.Errorf("git worktree add %s: %w", targetPath, err)
 	}
 	return nil
+}
+
+// BranchDFConflict reports a directory/file ref conflict that would stop git from
+// creating a branch named `name`, returning the existing branch it collides with.
+// git stores each branch as a path under refs/heads/, so `name` cannot be created
+// when either:
+//   - an existing branch lives under the name/ namespace (forward: "feat" is blocked
+//     by "feat/x"), or
+//   - an existing branch is an ancestor segment of name (reverse: "feat/x" is blocked
+//     by "feat").
+//
+// Segments are compared case-insensitively when the repo's filesystem is
+// case-insensitive (core.ignorecase, e.g. macOS default): there git's loose-ref lock
+// stat()s the refs directory, so it would still abort on a case-mismatched name like
+// "Feat" when "feat/x" exists — which a case-sensitive match would miss. On a
+// case-sensitive filesystem those names are genuinely distinct and allowed by git, so
+// the fold is gated off to avoid false positives.
+//
+// eme pre-checks this so a worktree name reuses git's exact failure as a friendly,
+// actionable error before any side effect, rather than a raw "exit status 255".
+func BranchDFConflict(repoDir, name string) (string, bool) {
+	out, _, err := Run(context.Background(), repoDir, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+	if err != nil {
+		return "", false // can't enumerate; git will still surface any real failure
+	}
+	fold := ignoreCase(repoDir)
+	for _, ref := range strings.Split(strings.TrimSpace(out), "\n") {
+		ref = strings.TrimSpace(ref)
+		if ref == "" {
+			continue
+		}
+		// Forward (ref under name/…) or reverse (name under ref/…) — either is a
+		// directory/file conflict; report the existing branch that collides.
+		if isBranchDescendant(ref, name, fold) || isBranchDescendant(name, ref, fold) {
+			return ref, true
+		}
+	}
+	return "", false
+}
+
+// isBranchDescendant reports whether child is strictly under parent's ref namespace,
+// i.e. every segment of parent is a prefix of child and child has at least one more
+// segment. Segments are compared case-insensitively when fold is set.
+func isBranchDescendant(child, parent string, fold bool) bool {
+	cs := strings.Split(child, "/")
+	ps := strings.Split(parent, "/")
+	if len(cs) <= len(ps) {
+		return false
+	}
+	for i := range ps {
+		if fold {
+			if !strings.EqualFold(cs[i], ps[i]) {
+				return false
+			}
+		} else if cs[i] != ps[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// ignoreCase reports whether the repo treats ref paths case-insensitively
+// (core.ignorecase, which git sets from a filesystem probe at init time).
+func ignoreCase(repoDir string) bool {
+	out, _, err := Run(context.Background(), repoDir, "config", "--get", "core.ignorecase")
+	return err == nil && strings.TrimSpace(out) == "true"
+}
+
+// RemoteCarriersOf returns the distinct remotes that carry a branch named name (i.e.
+// have a ref refs/remotes/<remote>/<name>). git's worktree-add DWIM can materialize a
+// local tracking branch only when EXACTLY ONE remote carries it; with several it
+// refuses to guess, so callers must disambiguate rather than let git emit a raw fatal.
+func RemoteCarriersOf(repoDir, name string) []string {
+	out, _, err := Run(context.Background(), repoDir, "for-each-ref", "--format=%(refname)", "refs/remotes/")
+	if err != nil {
+		return nil
+	}
+	var remotes []string
+	seen := map[string]bool{}
+	for _, ref := range strings.Split(strings.TrimSpace(out), "\n") {
+		// ref is "refs/remotes/<remote>/<name...>"; split off the remote, match the rest.
+		r := strings.TrimPrefix(strings.TrimSpace(ref), "refs/remotes/")
+		if i := strings.IndexByte(r, '/'); i >= 0 && r[i+1:] == name {
+			if remote := r[:i]; !seen[remote] {
+				seen[remote] = true
+				remotes = append(remotes, remote)
+			}
+		}
+	}
+	return remotes
+}
+
+// RemoteBranchExists reports whether any remote carries a branch named name.
+func RemoteBranchExists(repoDir, name string) bool {
+	return len(RemoteCarriersOf(repoDir, name)) > 0
+}
+
+// DeleteBranch force-deletes a local branch. Used to undo a branch eme itself created
+// when a later step of worktree creation fails, so a retry does not silently check out
+// the half-built leftover.
+func DeleteBranch(repoDir, name string) error {
+	_, _, err := Run(context.Background(), repoDir, "branch", "-D", name)
+	return err
+}
+
+// WorktreePrune drops administrative entries for worktrees whose directories are gone,
+// so a failed-then-retried creation does not leave a stale registration behind.
+func WorktreePrune(repoDir string) error {
+	_, _, err := Run(context.Background(), repoDir, "worktree", "prune")
+	return err
+}
+
+// BranchCheckedOutAt returns the worktree path where branch name is currently checked
+// out, if any. A branch can be checked out in at most one worktree, so a match means
+// `worktree add` would refuse to check it out again.
+func BranchCheckedOutAt(repoDir, name string) (string, bool) {
+	entries, err := WorktreeListPorcelain(repoDir)
+	if err != nil {
+		return "", false
+	}
+	for _, e := range entries {
+		if e.Branch == name {
+			return e.Path, true
+		}
+	}
+	return "", false
+}
+
+// BranchesUnderNamespace returns existing branches that live under name/ (the forward
+// directory/file-conflict candidates — e.g. the feat/* branches for name "feat"),
+// folding case on a case-insensitive filesystem so the suggestions match what actually
+// blocks the name.
+func BranchesUnderNamespace(repoDir, name string) []string {
+	out, _, err := Run(context.Background(), repoDir, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+	if err != nil {
+		return nil
+	}
+	fold := ignoreCase(repoDir)
+	var branches []string
+	for _, ref := range strings.Split(strings.TrimSpace(out), "\n") {
+		if ref = strings.TrimSpace(ref); ref != "" && isBranchDescendant(ref, name, fold) {
+			branches = append(branches, ref)
+		}
+	}
+	return branches
 }
 
 // WorktreeEntry is one row of `git worktree list --porcelain`.

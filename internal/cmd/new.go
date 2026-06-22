@@ -308,6 +308,20 @@ func createProject(folder string) error {
 		return routeByClassification(c, convertFlag)
 	}
 
+	// A greenfield (non-git) folder that already has content is not a place to
+	// scaffold a fresh nested-bare project — the new main/ worktree would be
+	// empty and the existing content left orphaned at the root. Adopt it in
+	// place and run the agent there directly. Only a truly empty folder takes
+	// the nested-bare scaffold below (the "new project from scratch" path).
+	if empty, err := dirIsEffectivelyEmpty(abs); err != nil {
+		return errors.Wrap(errors.CodeCommandFailed,
+			"Failed to inspect the folder.",
+			"Could not read the folder's contents.",
+			"Check that the folder is readable.", err)
+	} else if !empty {
+		return adoptPlain(abs)
+	}
+
 	if err := requireTmuxServer(); err != nil {
 		return err
 	}
@@ -385,6 +399,30 @@ func createProject(folder string) error {
 	return nil
 }
 
+// emptyDirIgnore lists incidental entries that do not make a folder "non-empty"
+// for the scaffold-vs-adopt decision (e.g. a macOS Finder dotfile).
+var emptyDirIgnore = map[string]bool{
+	".DS_Store": true,
+}
+
+// dirIsEffectivelyEmpty reports whether dir has no meaningful entries — only
+// incidental cruft (see emptyDirIgnore) is tolerated. It drives the greenfield
+// routing: an empty folder is scaffolded into a new nested-bare project, a
+// non-empty one is adopted in place.
+func dirIsEffectivelyEmpty(dir string) (bool, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false, err
+	}
+	for _, e := range entries {
+		if emptyDirIgnore[e.Name()] {
+			continue
+		}
+		return false, nil
+	}
+	return true, nil
+}
+
 // registerNestedBareProject wires up a nested-bare project at root into eme's
 // state and a new tmux session. It is called both from the greenfield path in
 // createProject (after bare+worktree creation) and from convertToNestedBare
@@ -457,6 +495,77 @@ func registerNestedBareProject(root string) error {
 	return nil
 }
 
+// repairStrandedNestedBare recovers a nested-bare project whose state entry was
+// stranded — registered but missing its main worktree (and possibly mislabeled as
+// in-place) — which leaves it unreachable: switchToSession has no window to move to
+// and, under --no-switch, no-ops. The on-disk <root>/.bare + <root>/main layout is
+// the source of truth, so rebuild the main worktree entry from it (reusing the live
+// tmux "main" window when present, to preserve a pane the user is working in) and
+// fix the layout, turning the dead end back into a working session.
+func repairStrandedNestedBare(s *state.State, sess *state.Session, root string) error {
+	if err := requireTmuxServer(); err != nil {
+		return err
+	}
+	mainPath := filepath.Join(root, "main")
+	if info, err := os.Stat(mainPath); err != nil || !info.IsDir() {
+		return errors.New(errors.CodeSessionNotFound,
+			fmt.Sprintf("session %q is registered but its main worktree is missing.", sess.DisplayName),
+			"The state entry has no main worktree and none was found on disk.",
+			"Remove it with `eme kill --force`, then recreate with `eme new`.")
+	}
+	branch, _ := git.CurrentBranch(mainPath)
+	if branch == "" || branch == "HEAD" {
+		branch = "main"
+	}
+	windowID, err := ensureMainWindow(sess.TmuxName, mainPath)
+	if err != nil {
+		return err
+	}
+	sess.Layout = state.LayoutNestedBare
+	sess.Worktrees = []state.Worktree{{
+		Name:         "main",
+		Branch:       branch,
+		Path:         mainPath,
+		TmuxWindowID: windowID,
+	}}
+	if err := saveState(s); err != nil {
+		return err
+	}
+	fmt.Printf("Recovered project %q (restored its main worktree).\n", sess.DisplayName)
+	return switchToSession(sess)
+}
+
+// ensureMainWindow returns the tmux window id of the session's "main" window,
+// reusing an existing one when present (so a live pane is preserved) and otherwise
+// creating the session or the window.
+func ensureMainWindow(tmuxName, mainPath string) (string, error) {
+	if !tmux.SessionExists(tmuxName) {
+		id, err := tmux.NewSession(tmuxName, "main", mainPath)
+		if err != nil {
+			return "", errors.Wrap(errors.CodeCommandFailed,
+				"Failed to create tmux session.",
+				"tmux new-session failed.",
+				"Run `eme doctor` to verify tmux.", err)
+		}
+		return id, nil
+	}
+	if windows, err := tmux.ListWindows(tmuxName); err == nil {
+		for id, name := range windows {
+			if name == "main" {
+				return id, nil
+			}
+		}
+	}
+	id, err := tmux.NewWindow(tmuxName, "main", mainPath)
+	if err != nil {
+		return "", errors.Wrap(errors.CodeCommandFailed,
+			"Failed to create tmux window.",
+			"tmux new-window failed.",
+			"Run `eme doctor` to verify tmux.", err)
+	}
+	return id, nil
+}
+
 // maybeOnboardAgent offers the agent picker for a freshly created project and,
 // on a concrete choice, records it as the project default and launches it in
 // main. It is best-effort: the project already exists, so any failure here is
@@ -513,18 +622,18 @@ func createWorktree(sessionArg, name string) error {
 		return err
 	}
 
+	if sess.Layout == state.LayoutPlain {
+		return errors.New(errors.CodeInvalidFolder,
+			fmt.Sprintf("%q is a plain folder, so it has no git worktrees.", sess.DisplayName),
+			"A plain (non-git) project runs the agent in the folder directly; creating a worktree needs a git repository.",
+			"Run `git init` in the folder (then re-add it), or use a git repo for worktree-per-agent.")
+	}
+
 	if name == "main" {
 		return errors.New(errors.CodeWorktreeExists,
 			"'main' is reserved for the project's main worktree.",
 			"Each project has exactly one main worktree.",
 			"Pick a different worktree name.")
-	}
-
-	if sess.WorktreeByName(name) != nil {
-		return errors.New(errors.CodeWorktreeExists,
-			fmt.Sprintf("worktree %q already exists in session %q.", name, sess.DisplayName),
-			"A worktree with that name is already registered.",
-			"Pick a different name or remove the existing worktree first.")
 	}
 
 	if sess.WorktreeByName("main") == nil {
@@ -534,10 +643,35 @@ func createWorktree(sessionArg, name string) error {
 			"Recreate the project with `eme new`.")
 	}
 
+	mainPath := sess.MainPath()
+
+	// If eme already manages a worktree by this name, take the user there instead of
+	// refusing or duplicating. Match by NAME first (it is stable even if the worktree
+	// directory was moved on disk) — a path-based lookup can go stale.
+	if w := sess.WorktreeByName(name); w != nil {
+		fmt.Printf("Worktree %q already exists; switching to it.\n", name)
+		maybeSwitchClient(sess.TmuxName, w.TmuxWindowID)
+		return nil
+	}
+
+	// Otherwise, if <name> is a branch checked out in some other worktree (the main
+	// worktree, or an external git worktree), don't try to check it out again — a
+	// branch lives in at most one worktree. Switch when eme manages it; else point.
+	if at, ok := git.BranchCheckedOutAt(mainPath, name); ok {
+		if w := worktreeAtPath(sess, at); w != nil {
+			fmt.Printf("Branch %q is already checked out in worktree %q; switching.\n", name, w.Name)
+			maybeSwitchClient(sess.TmuxName, w.TmuxWindowID)
+			return nil
+		}
+		return errors.New(errors.CodeWorktreeExists,
+			fmt.Sprintf("branch %q is already checked out at %s.", name, at),
+			"A branch can be checked out in only one worktree at a time.",
+			"Switch to that checkout, or use a different name.")
+	}
+
 	target := worktreeTargetPath(sess, name)
 
-	// Leaf-collision: refuse a pre-existing non-empty dir or file (and any
-	// existing dir, for safety).
+	// Leaf-collision: refuse a pre-existing dir or file at the worktree path.
 	if _, err := os.Stat(target); err == nil {
 		return errors.New(errors.CodeWorktreeExists,
 			fmt.Sprintf("%s already exists.", target),
@@ -545,30 +679,77 @@ func createWorktree(sessionArg, name string) error {
 			"Pick a different worktree name or remove the path first.")
 	}
 
-	// Branch-collision pre-check: without this, `worktree add -b` fails loudly,
-	// but a bare `<name>` would silently hijack an existing branch.
-	if git.BranchExists(sess.MainPath(), name) {
+	// Does <name> resolve to an existing branch we can check out? A local branch, or a
+	// branch carried by exactly one remote (git's worktree-add DWIM then creates a
+	// local tracking branch). If several remotes carry it and there is no local branch,
+	// git can't guess which to track — refuse with guidance instead of letting it emit
+	// a raw fatal.
+	local := git.BranchExists(mainPath, name)
+	remotes := git.RemoteCarriersOf(mainPath, name)
+	if !local && len(remotes) > 1 {
 		return errors.New(errors.CodeBranchExists,
-			fmt.Sprintf("branch %q already exists.", name),
-			"A new worktree would try to create a branch that already exists.",
-			"Pick a different name, or check it out manually.")
+			fmt.Sprintf("branch %q exists in multiple remotes (%s).", name, strings.Join(remotes, ", ")),
+			"git can't guess which remote to track when several carry the same branch name.",
+			fmt.Sprintf("Create it explicitly first (e.g. `git -C %s branch %s %s/%s`), then retry — or pick a new name.", mainPath, name, remotes[0], name))
+	}
+	checkout := local || len(remotes) == 1
+
+	// New-branch path only: a directory/file ref conflict (e.g. "feat" when "feat/x"
+	// exists) cannot become a branch. Refuse, offering the real branches as the names
+	// to type instead (typing one checks it out).
+	if !checkout {
+		if conflict, df := git.BranchDFConflict(mainPath, name); df {
+			fix := "Pick a different worktree name (e.g. add a suffix like " + name + "-1)."
+			if cands := git.BranchesUnderNamespace(mainPath, name); len(cands) > 0 {
+				fix = "Type one of these existing branches as the name to check it out: " +
+					strings.Join(cands, ", ") + " — or pick a new name."
+			}
+			return errors.New(errors.CodeBranchExists,
+				fmt.Sprintf("worktree name %q conflicts with existing branch %q.", name, conflict),
+				"git stores branches as paths, so a name that is a parent or child of another branch cannot be created.",
+				fix)
+		}
 	}
 
-	if err := os.MkdirAll(sess.WorktreeDir(), 0o755); err != nil {
+	// git worktree add creates the leaf dir; ensure its parent exists too (handles
+	// slashed branch names like feat/foo).
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return fmt.Errorf("create worktree dir: %w", err)
 	}
-	if err := git.WorktreeAddAt(sess.MainPath(), target, "", true); err != nil {
+	var addErr error
+	if checkout {
+		addErr = git.WorktreeAddAt(mainPath, target, name, false) // check out the existing branch
+	} else {
+		addErr = git.WorktreeAddAt(mainPath, target, "", true) // create a new branch
+	}
+	if addErr != nil {
 		return errors.Wrap(errors.CodeCommandFailed,
 			fmt.Sprintf("Failed to create worktree %q.", name),
 			"git worktree add failed.",
-			"Check git output with --verbose.", err)
+			"See git's message in the details below, then resolve it or pick a different name.", addErr)
 	}
 	path := target
 
-	windowID, err := tmux.NewWindow(sess.TmuxName, name, path)
-	if err != nil {
+	// cleanup undoes a partial creation. It deletes the branch ONLY when eme created
+	// one (the new-branch path) — on the checkout path the branch pre-existed and must
+	// survive. It also removes the intermediate directory of a slashed name and prunes
+	// the worktree registration, so a retry of the same name starts from a clean slate
+	// instead of silently checking out a half-built leftover.
+	cleanup := func() {
 		_ = git.WorktreeRemove(path, true)
 		_ = os.RemoveAll(path)
+		if parent := filepath.Dir(path); parent != sess.WorktreeDir() {
+			_ = os.Remove(parent) // remove the intermediate (e.g. .worktrees/feat) iff now empty
+		}
+		_ = git.WorktreePrune(mainPath)
+		if !checkout {
+			_ = git.DeleteBranch(mainPath, name)
+		}
+	}
+
+	windowID, err := tmux.NewWindow(sess.TmuxName, name, path)
+	if err != nil {
+		cleanup()
 		return errors.Wrap(errors.CodeCommandFailed,
 			"Failed to create tmux window.",
 			"tmux new-window failed.",
@@ -589,15 +770,38 @@ func createWorktree(sessionArg, name string) error {
 
 	if err := saveState(s); err != nil {
 		_ = tmux.KillWindow(sess.TmuxName, windowID)
-		_ = git.WorktreeRemove(path, true)
-		_ = os.RemoveAll(path)
+		cleanup()
 		return err
 	}
 
-	fmt.Printf("Created worktree %q in %s\n", name, sess.DisplayName)
+	if checkout {
+		fmt.Printf("Created worktree %q on existing branch %q in %s\n", name, name, sess.DisplayName)
+	} else {
+		fmt.Printf("Created worktree %q in %s\n", name, sess.DisplayName)
+	}
 
 	maybeSwitchClient(sess.TmuxName, windowID)
 	return nil
+}
+
+// worktreeAtPath returns the session worktree whose path canonically matches path.
+// git's porcelain output is symlink-resolved, so both sides are resolved before
+// comparison to map a git worktree path back to its eme worktree (including main).
+func worktreeAtPath(sess *state.Session, path string) *state.Worktree {
+	want := resolvePath(path)
+	for i := range sess.Worktrees {
+		if resolvePath(sess.Worktrees[i].Path) == want {
+			return &sess.Worktrees[i]
+		}
+	}
+	return nil
+}
+
+func resolvePath(p string) string {
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	return filepath.Clean(p)
 }
 
 // routeByClassification handles every non-greenfield folder kind by dispatching
@@ -616,9 +820,23 @@ func routeByClassification(c git.Classification, convert bool) error {
 			return err
 		}
 		if sess := s.SessionByRoot(c.TopLevel); sess != nil {
+			// A stranded entry — registered but missing its main worktree — is a
+			// dead end: switchToSession has no window to move to and, under
+			// --no-switch (the dashboard's call), silently does nothing, so the
+			// user sees "nothing happens" when they try to (re)create the folder.
+			// reconcile can produce this by pruning a worktree whose tmux window
+			// id went stale even though the git worktree is still on disk. Recover
+			// it from the on-disk nested-bare layout instead of switching.
+			if sess.WorktreeByName("main") == nil {
+				return repairStrandedNestedBare(s, sess, c.TopLevel)
+			}
 			return switchToSession(sess)
 		}
-		return adoptInPlace(c.TopLevel)
+		// A nested-bare folder's working tree is <root>/main, not <root>; adopting
+		// it in-place would register the (non-worktree) root as main, which
+		// reconcile then prunes — the exact corruption that strands such sessions.
+		// Register it with its real nested-bare layout instead.
+		return registerNestedBareProject(c.TopLevel)
 	case git.KindLinkedWorktree:
 		if c.MainPath == "" {
 			return errors.New(errors.CodeSessionNotFound,

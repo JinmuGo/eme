@@ -41,6 +41,41 @@ func TestState_UnreachableServerDoesNotPrune(t *testing.T) {
 	}
 }
 
+// TestState_PlainSessionNotPrunedWithoutGit guards plain (non-git) projects: a
+// LayoutPlain session's worktree must survive reconcile on the strength of its
+// directory + tmux window alone. Running the git worktree checks would error
+// (the folder is not a repo) and wrongly prune the session out of existence.
+func TestState_PlainSessionNotPrunedWithoutGit(t *testing.T) {
+	dir := t.TempDir() // a real, NON-git directory
+	mock := runner.NewMock()
+	mock.Set("tmux", []string{"list-sessions", "-F", "#{session_name}\t#{window_id}"},
+		"plain\t@1", "", nil)
+	mock.Set("tmux", []string{"list-windows", "-t", "plain", "-F", "#{window_id}\t#{window_name}"},
+		"@1\tmain", "", nil)
+	// Deliberately set NO git mock: a correct plain path must never shell out to git.
+	old := tmux.Runner
+	tmux.Runner = mock
+	defer func() { tmux.Runner = old }()
+
+	s := &state.State{
+		Version: state.Version,
+		Sessions: []state.Session{{
+			ID:        "plain-abc",
+			TmuxName:  "plain",
+			Root:      dir,
+			Layout:    state.LayoutPlain,
+			Worktrees: []state.Worktree{{Name: "main", Path: dir, TmuxWindowID: "@1"}},
+		}},
+	}
+
+	if modified := State(s); modified {
+		t.Fatalf("State() = true; a live plain session must not be modified")
+	}
+	if len(s.Sessions) != 1 || len(s.Sessions[0].Worktrees) != 1 {
+		t.Fatalf("plain session/worktree must be retained, got %d sessions", len(s.Sessions))
+	}
+}
+
 func TestPrunablePaths(t *testing.T) {
 	entries := []git.WorktreeEntry{
 		{Path: "/repo", Branch: "main"},
