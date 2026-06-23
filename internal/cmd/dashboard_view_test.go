@@ -75,6 +75,7 @@ func TestIsShellCommand_HonorsUserShellAndModernShells(t *testing.T) {
 func TestShortLocation(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"", ""},
+		{"/", ""},
 		{"/a", "a"},
 		{"/a/b", "a/b"},
 		{"/Users/jinmu/Programming/new/eme", "…/new/eme"},

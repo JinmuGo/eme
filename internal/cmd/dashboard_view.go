@@ -174,6 +174,7 @@ func shortLocation(path string) string {
 			parts = append(parts, p)
 		}
 	}
+	// root-only paths ("/", "//") clean to all-empty components — nothing to show.
 	if len(parts) == 0 {
 		return ""
 	}

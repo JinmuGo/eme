@@ -703,6 +703,7 @@ func fitLine(left, right string, width int) string {
 // beacon (and every status hue) survives under the cursor — selection and
 // attention are separate channels (DESIGN.md §5.3).
 func (m *DashboardModel) worktreeLine(w WorktreeView, selected bool, inner int) string {
+	// labels are ASCII and glyphs are width-1, so byte-format padding == colStatusW.
 	statusRaw := fmt.Sprintf("%s %-8s", w.Status.Glyph(), w.Status.Label())
 	nameRaw := padCell(w.Name, colNameW)
 	branchRaw := padCell(w.Branch, colBranchW)
