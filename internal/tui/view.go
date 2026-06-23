@@ -110,7 +110,8 @@ type WorktreeView struct {
 	AgentLabel string // agent binary basename when Working; "" otherwise
 	Added      int
 	Deleted    int
-	HasDiff    bool
+	HasDiff    bool   // kept; no longer rendered in the row
+	Location   string // compact display path (see cmd.shortLocation)
 }
 
 // SessionView is a render-ready view of one session (folder/project).

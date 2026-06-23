@@ -45,6 +45,7 @@ func buildViews(sessions []state.Session, snap map[string]tmux.PaneInfo, withDif
 				SessionID: s.ID,
 				IsMain:    w.Name == "main",
 				Status:    status,
+				Location:  shortLocation(w.Path),
 			}
 			if status == tui.StatusWorking {
 				wv.AgentLabel = agentLabel(w)
@@ -157,6 +158,34 @@ func emeState(v string) (tui.AgentStatus, bool) {
 	default:
 		return tui.StatusIdle, false
 	}
+}
+
+// shortLocation renders a filesystem path as its last two path segments, prefixed with
+// "…/" when more segments precede them. Empty in → empty out. It is width-agnostic; the
+// render layer truncates further when the column is narrower than the result.
+func shortLocation(path string) string {
+	if path == "" {
+		return ""
+	}
+	cleaned := filepath.ToSlash(filepath.Clean(path))
+	var parts []string
+	for _, p := range strings.Split(cleaned, "/") {
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	n := 2
+	if len(parts) < n {
+		n = len(parts)
+	}
+	tail := strings.Join(parts[len(parts)-n:], "/")
+	if len(parts) > 2 {
+		return "…/" + tail
+	}
+	return tail
 }
 
 // agentLabel returns the agent binary's basename from the command that started it,

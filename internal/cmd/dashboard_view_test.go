@@ -72,6 +72,23 @@ func TestIsShellCommand_HonorsUserShellAndModernShells(t *testing.T) {
 	}
 }
 
+func TestShortLocation(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"", ""},
+		{"/a", "a"},
+		{"/a/b", "a/b"},
+		{"/Users/jinmu/Programming/new/eme", "…/new/eme"},
+		{"/Users/jinmu/Programming/new/eme.worktrees/gege", "…/eme.worktrees/gege"},
+		{"relative/path/here", "…/path/here"},
+		{"/x/y/z/", "…/y/z"},
+	}
+	for _, c := range cases {
+		if got := shortLocation(c.in); got != c.want {
+			t.Errorf("shortLocation(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
 func TestAgentLabel(t *testing.T) {
 	cases := map[string]string{
 		"claude --dangerously": "claude",
@@ -122,7 +139,7 @@ func TestBuildSessionViews_MapsFields(t *testing.T) {
 		DisplayName: "myapp",
 		Root:        "/code/myapp",
 		Worktrees: []state.Worktree{
-			{Name: "main", Branch: "main", TmuxWindowID: "@1"},
+			{Name: "main", Branch: "main", TmuxWindowID: "@1", Path: "/code/myapp/main"},
 			{Name: "feat", Branch: "feat/x", TmuxWindowID: "@2", LastAgentCommand: "claude"},
 		},
 	}}
@@ -141,6 +158,9 @@ func TestBuildSessionViews_MapsFields(t *testing.T) {
 	main := views[0].Worktrees[0]
 	if !main.IsMain || main.Status != tui.StatusIdle || main.SessionID != "myapp-abc" {
 		t.Errorf("main view wrong: %+v", main)
+	}
+	if main.Location != "…/myapp/main" {
+		t.Errorf("main.Location = %q, want \"…/myapp/main\"", main.Location)
 	}
 	feat := views[0].Worktrees[1]
 	if feat.IsMain || feat.Status != tui.StatusWorking || feat.AgentLabel != "claude" {
