@@ -127,7 +127,7 @@ var caffeinateCmd = &cobra.Command{
 
   manual  keep awake for the whole session, unconditionally
   auto    keep awake only while an agent is working in the session
-  off      stop keeping awake
+  off     stop keeping awake
 
 The assertion lives in a hidden tmux window inside the session, so it stops
 automatically when the session ends. macOS only; a no-op elsewhere.`,
@@ -185,19 +185,21 @@ var caffeinateDaemonCmd = &cobra.Command{
 
 // sessionStatuses classifies every worktree pane of a session, reusing the dashboard's
 // classifyStatus (foreground process + @eme_state). The hidden caffeinate window is not
-// a state worktree, so it is never counted. Best-effort: any read failure yields nil.
-func sessionStatuses(sessionID string) []tui.AgentStatus {
+// a state worktree, so it is never counted. Returns (statuses, true) on success and
+// (nil, false) on any read failure so the caller can distinguish a genuine empty session
+// from a transient error.
+func sessionStatuses(sessionID string) ([]tui.AgentStatus, bool) {
 	s, err := loadState()
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	sess := s.SessionByID(sessionID)
 	if sess == nil {
-		return nil
+		return nil, false
 	}
 	snap, err := tmux.PanesSnapshot()
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	out := make([]tui.AgentStatus, 0, len(sess.Worktrees))
 	for i := range sess.Worktrees {
@@ -205,7 +207,7 @@ func sessionStatuses(sessionID string) []tui.AgentStatus {
 		info, present := snap[w.TmuxWindowID]
 		out = append(out, classifyStatus(info, present, w.LastAgentCommand))
 	}
-	return out
+	return out, true
 }
 
 // caffeinator owns a single /usr/bin/caffeinate child, started/stopped idempotently.
@@ -248,6 +250,7 @@ func runCaffeinateDaemon(sessionID, mode string) error {
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGHUP, syscall.SIGTERM, syscall.SIGINT)
+	defer signal.Stop(sigs)
 
 	if mode == "manual" {
 		caf.start()
@@ -265,7 +268,14 @@ func runCaffeinateDaemon(sessionID, mode string) error {
 		case <-sigs:
 			return nil
 		case <-ticker.C:
-			working := anyWorking(sessionStatuses(sessionID))
+			statuses, ok := sessionStatuses(sessionID)
+			if !ok {
+				// A transient read failure (tmux blip, state file lock) — hold the
+				// current caffeinate state unchanged. A real session death arrives as
+				// SIGHUP (handled above), so a blip should never drop the assertion.
+				continue
+			}
+			working := anyWorking(statuses)
 			if working {
 				sinceLast = 0
 			} else {

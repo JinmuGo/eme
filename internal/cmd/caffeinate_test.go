@@ -39,6 +39,14 @@ func TestShouldAssert(t *testing.T) {
 	}
 }
 
+func TestShouldAssert_GraceBoundary(t *testing.T) {
+	grace := 60 * time.Second
+	// Exactly at grace: sinceLast == grace uses <, so it must release (false).
+	if shouldAssert(false, grace, grace) {
+		t.Fatal("sinceLast == grace must release (< not <=)")
+	}
+}
+
 func TestNormalizeMode(t *testing.T) {
 	for _, in := range []string{"off", "manual", "auto"} {
 		if got, err := normalizeMode(in); err != nil || got != in {
@@ -154,12 +162,31 @@ func TestSessionStatuses_UsesClassifier(t *testing.T) {
 	}}}
 	withTempStatePath(t, s)
 
-	got := sessionStatuses("proj-1")
+	got, ok := sessionStatuses("proj-1")
+	if !ok {
+		t.Fatal("sessionStatuses: expected ok=true, got false")
+	}
 	if len(got) != 1 || got[0] != tui.StatusIdle {
 		t.Fatalf("sessionStatuses = %v, want [idle]", got)
 	}
 	if anyWorking(got) {
 		t.Fatal("shell foreground must not count as working")
+	}
+}
+
+func TestSessionStatuses_ReadFailureReturnsNotOk(t *testing.T) {
+	// stubCaffeinateEnv sets up the mock runner but we deliberately do NOT stub
+	// list-panes, so PanesSnapshot will error → sessionStatuses must return ok=false.
+	stubCaffeinateEnv(t)
+	s := &state.State{Version: state.Version, Sessions: []state.Session{{
+		ID: "proj-1", TmuxName: "proj",
+		Worktrees: []state.Worktree{{Name: "main", TmuxWindowID: "@1"}},
+	}}}
+	withTempStatePath(t, s)
+
+	_, ok := sessionStatuses("proj-1")
+	if ok {
+		t.Fatal("sessionStatuses: expected ok=false when PanesSnapshot errors, got true")
 	}
 }
 
