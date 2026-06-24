@@ -75,6 +75,8 @@ func init() {
 	rootCmd.AddCommand(switchCmd)
 	rootCmd.AddCommand(killCmd)
 	rootCmd.AddCommand(cleanCmd)
+	rootCmd.AddCommand(caffeinateCmd)
+	rootCmd.AddCommand(caffeinateDaemonCmd)
 	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(hooksCmd)
