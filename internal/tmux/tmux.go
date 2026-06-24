@@ -151,6 +151,27 @@ func NewWindow(session, name, cwd string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
+// NewWindowCmd creates a detached window in the session running command directly
+// (no shell) and returns its window id. The command and its arguments are passed
+// as separate tmux argv after all options, so tmux execs them without shell
+// quoting — safe for an absolute binary path. Like NewWindow it is detached (-d)
+// so it never steals focus. Used to host the per-session caffeinate daemon.
+func NewWindowCmd(session, name, cwd string, command ...string) (string, error) {
+	args := []string{"new-window", "-d", "-t", session + ":", "-P", "-F", "#{window_id}"}
+	if name != "" {
+		args = append(args, "-n", name)
+	}
+	if cwd != "" {
+		args = append(args, "-c", cwd)
+	}
+	args = append(args, command...)
+	out, _, err := tmux(args...)
+	if err != nil {
+		return "", fmt.Errorf("tmux new-window cmd: %w", err)
+	}
+	return strings.TrimSpace(out), nil
+}
+
 // KillWindow kills a window in a session.
 func KillWindow(session, windowID string) error {
 	target := session + ":" + windowID

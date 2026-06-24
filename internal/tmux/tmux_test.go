@@ -273,3 +273,33 @@ func TestParsePaneLine_MissingTimestampIsZero(t *testing.T) {
 		t.Fatalf("missing @eme_state_at must be 0, got ok=%v at=%d", ok, info.EmeStateAt)
 	}
 }
+
+func TestNewWindowCmd_RunsCommandDirectly(t *testing.T) {
+	mock := runner.NewMock()
+	prev := Runner
+	Runner = mock
+	defer func() { Runner = prev }()
+	prevSock := Socket
+	Socket = ""
+	defer func() { Socket = prevSock }()
+
+	want := []string{"new-window", "-d", "-t", "proj:", "-P", "-F", "#{window_id}",
+		"-n", "__eme_caffeinate", "-c", "/code/proj/main",
+		"/abs/eme", "caffeinate-daemon", "proj-1", "--mode", "auto"}
+	mock.Set("tmux", want, "@9\n", "", nil)
+
+	id, err := NewWindowCmd("proj", "__eme_caffeinate", "/code/proj/main",
+		"/abs/eme", "caffeinate-daemon", "proj-1", "--mode", "auto")
+	if err != nil {
+		t.Fatalf("NewWindowCmd error: %v", err)
+	}
+	if id != "@9" {
+		t.Fatalf("id = %q, want @9", id)
+	}
+	if len(mock.Calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(mock.Calls))
+	}
+	if !slices.Equal(mock.Calls[0].Args, want) {
+		t.Fatalf("args = %v, want %v", mock.Calls[0].Args, want)
+	}
+}
