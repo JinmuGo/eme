@@ -10,7 +10,7 @@ import (
 
 // paneSnapFormat mirrors the -F format tmux.PanesSnapshot uses; the mock key must
 // match it byte-for-byte (note the literal tabs).
-const paneSnapFormat = "#{window_id}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_current_command}\t#{@eme_state}"
+const paneSnapFormat = "#{window_id}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_current_command}\t#{@eme_state}\t#{@eme_state_at}"
 
 func calledRespawn(m *runner.Mock, target string) bool {
 	for _, c := range m.Calls {
