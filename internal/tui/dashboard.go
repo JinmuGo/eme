@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 
@@ -28,13 +29,14 @@ var (
 	errorStyle  = lipgloss.NewStyle().Foreground(theme.Danger)
 	helpStyle   = lipgloss.NewStyle().Foreground(theme.Muted)
 
-	textStyle     = lipgloss.NewStyle().Foreground(theme.Text)
-	rhymeStyle    = lipgloss.NewStyle().Foreground(theme.Muted)
-	needsYouStyle = lipgloss.NewStyle().Bold(true).Foreground(theme.Beacon)
-	sessionStyle  = lipgloss.NewStyle().Bold(true).Foreground(theme.Text)
-	rootStyle     = lipgloss.NewStyle().Foreground(theme.Muted)
-	branchStyle   = lipgloss.NewStyle().Foreground(theme.Muted)
-	locationStyle = lipgloss.NewStyle().Foreground(theme.Muted) // worktree dir; reference info, no hue
+	textStyle       = lipgloss.NewStyle().Foreground(theme.Text)
+	rhymeStyle      = lipgloss.NewStyle().Foreground(theme.Muted)
+	needsYouStyle   = lipgloss.NewStyle().Bold(true).Foreground(theme.Beacon)
+	sessionStyle    = lipgloss.NewStyle().Bold(true).Foreground(theme.Text)
+	rootStyle       = lipgloss.NewStyle().Foreground(theme.Muted)
+	branchStyle     = lipgloss.NewStyle().Foreground(theme.Muted)
+	locationStyle   = lipgloss.NewStyle().Foreground(theme.Muted) // worktree dir; reference info, no hue
+	caffeinateStyle = lipgloss.NewStyle().Foreground(theme.Working)
 
 	// selectedGutter marks the cursor row with a quiet, non-hue ▌ on the surface
 	// lift. Selection is a separate channel from the beacon: a background platform,
@@ -184,6 +186,36 @@ func sessionKey(sv SessionView) string {
 		return sv.Worktrees[0].SessionID
 	}
 	return sv.DisplayName
+}
+
+// caffeinateSupportedTUI gates the w-key feedback to macOS. A var seam for tests.
+var caffeinateSupportedTUI = func() bool { return runtime.GOOS == "darwin" }
+
+// nextCaffeinateMode cycles a session's keep-awake intent for the w key:
+// off → manual → auto → off. The returned value is the --mode argument for the CLI
+// ("off" maps back to "" intent inside `eme caffeinate`).
+func nextCaffeinateMode(cur string) string {
+	switch cur {
+	case "manual":
+		return "auto"
+	case "auto":
+		return "off"
+	default: // "" (off)
+		return "manual"
+	}
+}
+
+// caffeinateBadge is the session-header marker for a keep-awake intent (ASCII, per the
+// glyph convention). "" when off.
+func caffeinateBadge(mode string) string {
+	switch mode {
+	case "manual":
+		return "(caf)"
+	case "auto":
+		return "(caf~)"
+	default:
+		return ""
+	}
 }
 
 // isCollapsed reports whether the session at index si is folded.
@@ -459,6 +491,20 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.notice = "x clears a finished agent — " + w.Name + " is " + w.Status.Label()
 			}
+		case "w":
+			// Cycle the session under the cursor through off → manual → auto → off.
+			// caffeinate is session-scoped, so this works on a header or any worktree row.
+			if !caffeinateSupportedTUI() {
+				m.notice = "caffeinate is macOS-only"
+				break
+			}
+			si := m.selectedSession()
+			if si < 0 {
+				m.notice = "select a session to toggle caffeinate"
+				break
+			}
+			m.notice = ""
+			return m, m.runChildBackground("caffeinate", sessionKey(m.views[si]), "--mode", nextCaffeinateMode(m.views[si].Caffeinate))
 		case "d":
 			m.closePeek() // a confirm prompt replaces the peek; never stack the two
 			if r := m.currentRow(); r != nil && r.kind == rowSession {
@@ -551,7 +597,7 @@ func (m *DashboardModel) View() string {
 	}
 	help := "↑↓/jk move · ←→/hl fold · ↵ open · n new · d kill · ? more · q quit"
 	if m.showHelp {
-		help = "↑↓/jk move · ←→/hl fold · ↵/o open · p peek · n new · c worktree · a agent · A pick · x clean · d kill · q quit · ?"
+		help = "↑↓/jk move · ←→/hl fold · ↵/o open · p peek · n new · c worktree · a agent · A pick · x clean · w wake · d kill · q quit · ?"
 	}
 	bottom = append(bottom, wrapStyled(helpStyle, help, inner)...)
 
@@ -790,6 +836,9 @@ func (m *DashboardModel) sessionLine(si int, selected bool, inner int) string {
 	}
 	head := gutter + bg(rhymeStyle).Render(caret) + bg(plain).Render(" ") +
 		bg(sessionStyle).Render(fmt.Sprintf("%d  %s", si+1, sv.DisplayName))
+	if badge := caffeinateBadge(sv.Caffeinate); badge != "" {
+		head += bg(plain).Render(" ") + bg(caffeinateStyle).Render(badge)
+	}
 
 	tail := sv.Root
 	if m.isCollapsed(si) {

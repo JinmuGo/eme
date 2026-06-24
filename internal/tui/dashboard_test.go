@@ -1142,3 +1142,36 @@ func TestDashboardSchemaRowStaysPinnedWhenScrolled(t *testing.T) {
 		t.Errorf("schema row should stay pinned (in the header) when the tree scrolls:\n%s", v)
 	}
 }
+
+func TestNextCaffeinateMode_Cycles(t *testing.T) {
+	cases := map[string]string{"": "manual", "manual": "auto", "auto": "off"}
+	for in, want := range cases {
+		if got := nextCaffeinateMode(in); got != want {
+			t.Fatalf("nextCaffeinateMode(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestCaffeinateBadge(t *testing.T) {
+	if caffeinateBadge("") != "" {
+		t.Fatal("off → no badge")
+	}
+	if caffeinateBadge("manual") != "(caf)" {
+		t.Fatalf("manual badge = %q", caffeinateBadge("manual"))
+	}
+	if caffeinateBadge("auto") != "(caf~)" {
+		t.Fatalf("auto badge = %q", caffeinateBadge("auto"))
+	}
+}
+
+func TestSessionLine_ShowsCaffeinateBadge(t *testing.T) {
+	m := NewDashboard([]SessionView{{
+		DisplayName: "proj", Root: "/proj", Caffeinate: "auto",
+		Worktrees:   []WorktreeView{{Name: "main", SessionID: "proj-1"}},
+	}}, func() ([]SessionView, error) { return nil, nil })
+	m.width, m.height = 100, 24
+	out := m.View()
+	if !strings.Contains(out, "(caf~)") {
+		t.Fatalf("expected the auto badge in the session line, got:\n%s", out)
+	}
+}
