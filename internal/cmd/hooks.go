@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -164,15 +165,11 @@ func runHooksInstall() error {
 
 // hookEventVerb labels an event in the install report as added, updated, or unchanged.
 func hookEventVerb(event string, added, updated []string) string {
-	for _, e := range added {
-		if e == event {
-			return "added"
-		}
+	if slices.Contains(added, event) {
+		return "added"
 	}
-	for _, e := range updated {
-		if e == event {
-			return "updated"
-		}
+	if slices.Contains(updated, event) {
+		return "updated"
 	}
 	return "unchanged"
 }

@@ -111,54 +111,30 @@ func TestMergeClaudeHooks_AddsAllFourIntoEmptySettings(t *testing.T) {
 	}
 }
 
-// TestMergeClaudeHooks_UpgradesOldInstall: an old install (no @eme_state_at, no matchers)
-// is detected as outdated and re-installed with the current desired command+matchers.
 func TestMergeClaudeHooks_UpgradesOldInstall(t *testing.T) {
-	// Simulate an old install: Notification group with no matcher and old command (no @eme_state_at).
-	// Build via json.Marshal so embedded quotes/dollar signs are properly escaped.
-	oldCmd := `[ -n "$TMUX" ] && tmux set-option -p -t "$TMUX_PANE" @eme_state waiting || true`
-	oldGroup := claudeHookGroup{
-		Hooks: []claudeHookCommand{{Type: "command", Command: oldCmd}},
-	}
-	oldGroupJSON, err := json.Marshal(oldGroup)
-	if err != nil {
-		t.Fatalf("marshal old group: %v", err)
-	}
-	oldSettings, err := json.Marshal(map[string]map[string]json.RawMessage{
-		"hooks": {"Notification": json.RawMessage("[" + string(oldGroupJSON) + "]")},
-	})
-	if err != nil {
-		t.Fatalf("marshal old settings: %v", err)
-	}
-	out, added, updated, err := mergeClaudeHooks(oldSettings)
+	// An old install: 3 events, no timestamp, bare Notification matcher — exactly what a
+	// pre-upgrade eme wrote. Re-install must rewrite the three and ADD PreToolUse.
+	old := []byte(`{"hooks":{
+	  "UserPromptSubmit":[{"hooks":[{"type":"command","command":"[ -n \"$TMUX\" ] && tmux set-option -p -t \"$TMUX_PANE\" @eme_state working || true"}]}],
+	  "Notification":[{"hooks":[{"type":"command","command":"[ -n \"$TMUX\" ] && tmux set-option -p -t \"$TMUX_PANE\" @eme_state waiting || true"}]}],
+	  "Stop":[{"hooks":[{"type":"command","command":"[ -n \"$TMUX\" ] && tmux set-option -p -t \"$TMUX_PANE\" @eme_state idle || true"}]}]
+	}}`)
+	out, added, updated, err := mergeClaudeHooks(old)
 	if err != nil {
 		t.Fatalf("merge: %v", err)
 	}
-	// Notification should be updated (was eme-owned but outdated), others added.
-	foundUpdated := false
-	for _, e := range updated {
-		if e == "Notification" {
-			foundUpdated = true
-		}
+	if len(added) != 1 || added[0] != "PreToolUse" {
+		t.Errorf("added=%v, want [PreToolUse]", added)
 	}
-	if !foundUpdated {
-		t.Errorf("Notification not in updated=%v; expected upgrade from old command", updated)
+	if len(updated) != 3 {
+		t.Errorf("updated=%v, want 3 (UserPromptSubmit, Notification, Stop)", updated)
 	}
 	hm := hooksMap(t, decodeSettings(t, out))
-	notifGroups := hm["Notification"]
-	if len(notifGroups) == 0 {
-		t.Fatal("Notification groups missing after upgrade")
+	if len(hm["Notification"]) != 1 || hm["Notification"][0].Matcher != "permission_prompt" {
+		t.Errorf("Notification not upgraded to permission_prompt: %+v", hm["Notification"])
 	}
-	upgraded := notifGroups[len(notifGroups)-1]
-	if upgraded.Matcher != "permission_prompt" {
-		t.Errorf("upgraded Notification matcher = %q, want permission_prompt", upgraded.Matcher)
-	}
-	if len(upgraded.Hooks) == 0 || !strings.Contains(upgraded.Hooks[0].Command, emeHookAtMarker) {
-		t.Errorf("upgraded Notification command missing @eme_state_at: %s", upgraded.Hooks[0].Command)
-	}
-	// added should include the 3 other events (UserPromptSubmit, PreToolUse, Stop).
-	if len(added) != 3 {
-		t.Errorf("added = %v, want 3 (non-Notification events)", added)
+	if !strings.Contains(hm["Stop"][0].Hooks[0].Command, "@eme_state_at") {
+		t.Errorf("Stop command not upgraded with timestamp: %q", hm["Stop"][0].Hooks[0].Command)
 	}
 }
 
