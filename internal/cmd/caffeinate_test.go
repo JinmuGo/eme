@@ -175,3 +175,44 @@ func TestCaffeinateCmd_OffOnNonMac_NoOp(t *testing.T) {
 		t.Fatalf("non-mac caffeinate must no-op, got %v", err)
 	}
 }
+
+func TestReconcileCaffeinate_ReArmsMissingWindow(t *testing.T) {
+	mock := stubCaffeinateEnv(t)
+	// Session exists; its window list lacks __eme_caffeinate → must re-arm.
+	mock.Set("tmux", []string{"has-session", "-t", "proj"}, "", "", nil)
+	mock.Set("tmux", []string{"list-windows", "-t", "proj", "-F", "#{window_id}\t#{window_name}"},
+		"@1\tmain\n", "", nil)
+	s := &state.State{Version: state.Version, Sessions: []state.Session{
+		{ID: "proj-1", TmuxName: "proj", CaffeinateMode: "manual"},
+	}}
+
+	reconcileCaffeinate(s)
+
+	var rearmed bool
+	for _, c := range mock.Calls {
+		if len(c.Args) > 0 && c.Args[0] == "new-window" && slices.Contains(c.Args, "caffeinate-daemon") {
+			rearmed = true
+		}
+	}
+	if !rearmed {
+		t.Fatalf("expected re-arm new-window, got %+v", mock.Calls)
+	}
+}
+
+func TestReconcileCaffeinate_SkipsWhenPresent(t *testing.T) {
+	mock := stubCaffeinateEnv(t)
+	mock.Set("tmux", []string{"has-session", "-t", "proj"}, "", "", nil)
+	mock.Set("tmux", []string{"list-windows", "-t", "proj", "-F", "#{window_id}\t#{window_name}"},
+		"@1\tmain\n@2\t"+caffeinateWindowName+"\n", "", nil)
+	s := &state.State{Version: state.Version, Sessions: []state.Session{
+		{ID: "proj-1", TmuxName: "proj", CaffeinateMode: "auto"},
+	}}
+
+	reconcileCaffeinate(s)
+
+	for _, c := range mock.Calls {
+		if len(c.Args) > 0 && c.Args[0] == "new-window" {
+			t.Fatalf("must not re-arm when window present, got %+v", mock.Calls)
+		}
+	}
+}

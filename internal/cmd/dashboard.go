@@ -22,6 +22,7 @@ func runDashboard() error {
 	if err != nil {
 		return err
 	}
+	reconcileCaffeinate(s)
 
 	// If stdout is not a terminal, we cannot open an interactive TUI.
 	if !isTerminal() {
@@ -41,6 +42,7 @@ func runDashboard() error {
 		if err != nil {
 			return nil, err
 		}
+		reconcileCaffeinate(rs)
 		// F1 (ground truth, never a guess): if the snapshot read fails, surface the
 		// error so the dashboard keeps its last-known views instead of repainting a
 		// guessed status.

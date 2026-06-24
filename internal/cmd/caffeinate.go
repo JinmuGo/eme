@@ -280,6 +280,42 @@ func runCaffeinateDaemon(sessionID, mode string) error {
 	}
 }
 
+// reconcileCaffeinate re-arms any alive session whose recorded caffeinate intent has
+// no live __eme_caffeinate window (e.g. the window was manually killed, or a prior
+// arm failed). Best-effort and macOS-gated; runs on full dashboard loads, not on the
+// cheap status tick. A killed session is absent from state, so it is never re-armed.
+func reconcileCaffeinate(s *state.State) {
+	if !caffeinateSupportedFn() {
+		return
+	}
+	for i := range s.Sessions {
+		sess := &s.Sessions[i]
+		if sess.CaffeinateMode == "" {
+			continue
+		}
+		if !tmux.SessionExists(sess.TmuxName) {
+			continue
+		}
+		windows, err := tmux.ListWindows(sess.TmuxName)
+		if err != nil {
+			continue
+		}
+		if hasCaffeinateWindow(windows) {
+			continue
+		}
+		_ = armCaffeinate(sess, sess.CaffeinateMode)
+	}
+}
+
+func hasCaffeinateWindow(windows map[string]string) bool {
+	for _, name := range windows {
+		if name == caffeinateWindowName {
+			return true
+		}
+	}
+	return false
+}
+
 func init() {
 	caffeinateCmd.Flags().StringVar(&caffeinateMode, "mode", "", "manual | auto | off")
 	_ = caffeinateCmd.MarkFlagRequired("mode")
