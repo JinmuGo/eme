@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestCatalog_IncludesBuiltins(t *testing.T) {
@@ -96,6 +97,26 @@ func TestDefault_WorktreeTemplate(t *testing.T) {
 func TestDefault_TmuxSocket_IsAmbient(t *testing.T) {
 	if got := Default().Tmux.Socket; got != "" {
 		t.Errorf("default tmux socket = %q, want \"\" (ambient)", got)
+	}
+}
+
+func TestQuietAfterDuration(t *testing.T) {
+	cases := []struct {
+		in   string
+		want time.Duration
+	}{
+		{"", 2 * time.Minute},
+		{"90s", 90 * time.Second},
+		{"5m", 5 * time.Minute},
+		{"garbage", 2 * time.Minute},
+		{"0", 0},
+		{"0s", 0},
+	}
+	for _, c := range cases {
+		got := (&Config{Status: Status{QuietAfter: c.in}}).QuietAfterDuration()
+		if got != c.want {
+			t.Errorf("QuietAfterDuration(%q) = %v, want %v", c.in, got, c.want)
+		}
 	}
 }
 

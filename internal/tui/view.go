@@ -3,6 +3,7 @@ package tui
 import (
 	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -102,16 +103,20 @@ func (s AgentStatus) NeedsAttention() bool {
 
 // WorktreeView is a render-ready view of one worktree (tmux window).
 type WorktreeView struct {
-	Name       string
-	Branch     string
-	SessionID  string
-	IsMain     bool
-	Status     AgentStatus
-	AgentLabel string // agent binary basename when Working; "" otherwise
-	Added      int
-	Deleted    int
-	HasDiff    bool   // kept; no longer rendered in the row
-	Location   string // compact display path (see cmd.shortLocation)
+	Name           string
+	Branch         string
+	SessionID      string
+	IsMain         bool
+	Status         AgentStatus
+	AgentLabel     string // agent binary basename when Working; "" otherwise
+	Added          int
+	Deleted        int
+	HasDiff        bool      // kept; no longer rendered in the row
+	Location       string    // compact display path (see cmd.shortLocation)
+	Hooked         bool      // a hook pushed @eme_state — status is ground truth, age is known
+	StateChangedAt time.Time // from @eme_state_at; zero = unknown (not hooked / not working|waiting)
+	Quiet          bool      // hooked + working + age >= quiet_after — a soft "gone quiet" hint
+	AgeLabel       string    // formatted age in state ("12m"); "" when StateChangedAt is unknown
 }
 
 // SessionView is a render-ready view of one session (folder/project).

@@ -3,7 +3,9 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jinmu/eme/internal/git"
 	"github.com/jinmu/eme/internal/state"
@@ -16,8 +18,8 @@ import (
 // diff stat. Used on the initial load and after each child action. The snapshot is
 // injected so this stays pure and testable; status/git inspection lives here so the
 // tui package stays presentation-only.
-func buildSessionViews(sessions []state.Session, snap map[string]tmux.PaneInfo) []tui.SessionView {
-	return buildViews(sessions, snap, true)
+func buildSessionViews(sessions []state.Session, snap map[string]tmux.PaneInfo, now time.Time, quietAfter time.Duration) []tui.SessionView {
+	return buildViews(sessions, snap, true, now, quietAfter)
 }
 
 // buildStatusViews is the cheap status-only path for the auto-refresh ticker (and,
@@ -25,12 +27,12 @@ func buildSessionViews(sessions []state.Session, snap map[string]tmux.PaneInfo) 
 // skips the per-worktree git diff — a subprocess per worktree that, at the tick
 // cadence across many worktrees, is real churn. The dashboard recomputes diffs only
 // on a full reload and carries the last-known stats forward between ticks.
-func buildStatusViews(sessions []state.Session, snap map[string]tmux.PaneInfo) []tui.SessionView {
-	return buildViews(sessions, snap, false)
+func buildStatusViews(sessions []state.Session, snap map[string]tmux.PaneInfo, now time.Time, quietAfter time.Duration) []tui.SessionView {
+	return buildViews(sessions, snap, false, now, quietAfter)
 }
 
 // buildViews is the shared mapper; withDiff toggles the expensive git.DiffStat call.
-func buildViews(sessions []state.Session, snap map[string]tmux.PaneInfo, withDiff bool) []tui.SessionView {
+func buildViews(sessions []state.Session, snap map[string]tmux.PaneInfo, withDiff bool, now time.Time, quietAfter time.Duration) []tui.SessionView {
 	views := make([]tui.SessionView, 0, len(sessions))
 	for i := range sessions {
 		s := &sessions[i]
@@ -46,6 +48,15 @@ func buildViews(sessions []state.Session, snap map[string]tmux.PaneInfo, withDif
 				IsMain:    w.Name == "main",
 				Status:    status,
 				Location:  shortLocation(w.Path),
+				Hooked:    present && strings.TrimSpace(info.EmeState) != "",
+			}
+			// Age/quiet are hook-derived and only meaningful while the agent is actively
+			// working or waiting; idle/exited/crashed carry no age.
+			if present && info.EmeStateAt > 0 && (status == tui.StatusWorking || status == tui.StatusWaiting) {
+				wv.StateChangedAt = time.Unix(info.EmeStateAt, 0)
+				wv.AgeLabel = formatAge(now.Sub(wv.StateChangedAt))
+				wv.Quiet = wv.Hooked && status == tui.StatusWorking &&
+					quietAfter > 0 && now.Sub(wv.StateChangedAt) >= quietAfter
 			}
 			if status == tui.StatusWorking {
 				wv.AgentLabel = agentLabel(w)
@@ -60,6 +71,24 @@ func buildViews(sessions []state.Session, snap map[string]tmux.PaneInfo, withDif
 		views = append(views, sv)
 	}
 	return views
+}
+
+// formatAge renders a duration as a compact, fixed-meaning token for the row's age cell:
+// "" for negative/unknown, then "Ns" (<1m), "Nm" (<1h), "Nh" (<1d), "Nd" otherwise.
+func formatAge(d time.Duration) string {
+	if d < 0 {
+		return ""
+	}
+	switch {
+	case d < time.Minute:
+		return strconv.Itoa(int(d.Seconds())) + "s"
+	case d < time.Hour:
+		return strconv.Itoa(int(d.Minutes())) + "m"
+	case d < 24*time.Hour:
+		return strconv.Itoa(int(d.Hours())) + "h"
+	default:
+		return strconv.Itoa(int(d.Hours())/24) + "d"
+	}
 }
 
 // shellCommands are the foreground process names that mean "the pane is sitting at an

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"testing"
+	"time"
 
 	"github.com/jinmu/eme/internal/git"
 	"github.com/jinmu/eme/internal/runner"
@@ -118,7 +119,7 @@ func TestBuildStatusViews_SkipsGitDiff(t *testing.T) {
 	}}
 	snap := map[string]tmux.PaneInfo{"@2": {Dead: false, Command: "node"}}
 
-	views := buildStatusViews(sessions, snap)
+	views := buildStatusViews(sessions, snap, time.Now(), 2*time.Minute)
 	if len(mock.Calls) != 0 {
 		t.Errorf("status-only build must not shell out to git, made %d call(s): %+v", len(mock.Calls), mock.Calls)
 	}
@@ -152,7 +153,7 @@ func TestBuildSessionViews_MapsFields(t *testing.T) {
 		"@2": {Dead: false, Command: "node"},
 	}
 
-	views := buildSessionViews(sessions, snap)
+	views := buildSessionViews(sessions, snap, time.Now(), 2*time.Minute)
 	if len(views) != 1 || len(views[0].Worktrees) != 2 {
 		t.Fatalf("unexpected shape: %+v", views)
 	}
@@ -188,11 +189,55 @@ func TestBuildSessionViews_PlainLayoutSetsIsPlain(t *testing.T) {
 	}
 	snap := map[string]tmux.PaneInfo{"@1": {Command: "zsh"}, "@2": {Command: "zsh"}}
 
-	views := buildSessionViews(sessions, snap)
+	views := buildSessionViews(sessions, snap, time.Now(), 2*time.Minute)
 	if views[0].IsPlain {
 		t.Errorf("in-place repo should not be plain: %+v", views[0])
 	}
 	if !views[1].IsPlain {
 		t.Errorf("plain folder should set IsPlain: %+v", views[1])
+	}
+}
+
+func TestBuildViews_DerivesAgeAndQuiet(t *testing.T) {
+	now := time.Unix(1_750_000_600, 0) // 600s after the stamps below
+	sessions := []state.Session{{
+		ID: "s1", DisplayName: "proj", Layout: state.LayoutNestedBare,
+		Worktrees: []state.Worktree{
+			{Name: "fresh", Path: "/p/fresh", TmuxWindowID: "@1"},
+			{Name: "quiet", Path: "/p/quiet", TmuxWindowID: "@2"},
+			{Name: "bare", Path: "/p/bare", TmuxWindowID: "@3"},
+		},
+	}}
+	snap := map[string]tmux.PaneInfo{
+		"@1": {Command: "node", EmeState: "working", EmeStateAt: 1_750_000_580}, // 20s ago → not quiet
+		"@2": {Command: "node", EmeState: "working", EmeStateAt: 1_750_000_300}, // 300s ago → quiet
+		"@3": {Command: "node"},                                                 // no hook → no age/quiet
+	}
+	views := buildViews(sessions, snap, false, now, 2*time.Minute)
+	wts := views[0].Worktrees
+	if wts[0].AgeLabel != "20s" || wts[0].Quiet {
+		t.Errorf("fresh: age=%q quiet=%v, want 20s / not quiet", wts[0].AgeLabel, wts[0].Quiet)
+	}
+	if wts[1].AgeLabel != "5m" || !wts[1].Quiet {
+		t.Errorf("quiet: age=%q quiet=%v, want 5m / quiet", wts[1].AgeLabel, wts[1].Quiet)
+	}
+	if wts[2].Hooked || wts[2].AgeLabel != "" || !wts[2].StateChangedAt.IsZero() {
+		t.Errorf("bare: hooked=%v age=%q — want unhooked, no age", wts[2].Hooked, wts[2].AgeLabel)
+	}
+}
+
+func TestFormatAge(t *testing.T) {
+	cases := []struct {
+		d    time.Duration
+		want string
+	}{
+		{-time.Second, ""}, {0, "0s"}, {45 * time.Second, "45s"}, {90 * time.Second, "1m"},
+		{59 * time.Minute, "59m"}, {60 * time.Minute, "1h"}, {23 * time.Hour, "23h"},
+		{24 * time.Hour, "1d"}, {400 * time.Hour, "16d"},
+	}
+	for _, c := range cases {
+		if got := formatAge(c.d); got != c.want {
+			t.Errorf("formatAge(%v) = %q, want %q", c.d, got, c.want)
+		}
 	}
 }

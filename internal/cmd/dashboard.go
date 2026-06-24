@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"syscall"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -35,7 +36,7 @@ func runDashboard() error {
 	if err != nil {
 		snap = map[string]tmux.PaneInfo{}
 	}
-	model := tui.NewDashboard(buildSessionViews(s.Sessions, snap), func() ([]tui.SessionView, error) {
+	model := tui.NewDashboard(buildSessionViews(s.Sessions, snap, time.Now(), cfg.QuietAfterDuration()), func() ([]tui.SessionView, error) {
 		rs, err := loadReconciledState()
 		if err != nil {
 			return nil, err
@@ -47,7 +48,7 @@ func runDashboard() error {
 		if err != nil {
 			return nil, err
 		}
-		return buildSessionViews(rs.Sessions, snap), nil
+		return buildSessionViews(rs.Sessions, snap, time.Now(), cfg.QuietAfterDuration()), nil
 	})
 	// The auto-refresh ticker uses a cheap status-only reload: raw state (no full
 	// reconcile) + the batched snapshot, skipping the per-worktree git diff. The model
@@ -61,7 +62,7 @@ func runDashboard() error {
 		if err != nil {
 			return nil, err
 		}
-		return buildStatusViews(st.Sessions, snap), nil
+		return buildStatusViews(st.Sessions, snap, time.Now(), cfg.QuietAfterDuration()), nil
 	})
 	// The `p` peek reads the selected pane's last lines, read-only (capture-pane).
 	// Resolved against raw state so it always targets the live tmux window.

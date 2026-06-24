@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -18,7 +19,31 @@ type Config struct {
 	Picker   Picker      `toml:"picker"`
 	Worktree Worktree    `toml:"worktree"`
 	Tmux     Tmux        `toml:"tmux"`
+	Status   Status      `toml:"status"`
 	Agents   []AgentSpec `toml:"agents"`
+}
+
+// Status configures the agent-status signals.
+type Status struct {
+	// QuietAfter is how long a hooked agent may sit in "working" before the dashboard
+	// dims it as gone-quiet. A Go duration; "" → default 2m; "0"/"0s" → disabled.
+	QuietAfter string `toml:"quiet_after"`
+}
+
+// QuietAfterDuration parses Status.QuietAfter. Empty/invalid → 2m; "0"/"0s" → 0 (disabled).
+func (c *Config) QuietAfterDuration() time.Duration {
+	s := strings.TrimSpace(c.Status.QuietAfter)
+	if s == "" {
+		return 2 * time.Minute
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 2 * time.Minute
+	}
+	if d < 0 {
+		return 0
+	}
+	return d
 }
 
 // Tmux configures how eme talks to tmux.
@@ -122,6 +147,7 @@ func Default() *Config {
 		Agent:    Agent{Command: "opencode"},
 		Picker:   Picker{MaxDepth: DefaultPickerMaxDepth},
 		Worktree: Worktree{DirTemplate: "{repo}.worktrees"},
+		Status:   Status{QuietAfter: "2m"},
 		// Tmux.Socket defaults to "" (ambient: use your current tmux server).
 	}
 }
