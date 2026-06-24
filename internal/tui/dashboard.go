@@ -652,7 +652,7 @@ func (m *DashboardModel) View() string {
 	}
 	help := "↑↓/jk move · ←→/hl fold · ↵ open · n new · d kill · ? more · q quit"
 	if m.showHelp {
-		help = "↑↓/jk move · ←→/hl fold · ↵/o open · p peek · n new · c worktree · a agent · A pick · x clean · s sort · d kill · q quit · ?"
+		help = "↑↓/jk move · ←→/hl fold · ↵/o open · p peek · P preview · n new · c worktree · a agent · A pick · x clean · s sort · d kill · q quit · ?"
 	}
 	bottom = append(bottom, wrapStyled(helpStyle, help, inner)...)
 
@@ -1073,6 +1073,7 @@ func (m *DashboardModel) refresh(actionErr error, output string) {
 		return
 	}
 	m.applyViews(views)
+	m.refreshPreview()
 }
 
 // SetStatusReload installs the cheap status-only reload the auto-refresh ticker uses
