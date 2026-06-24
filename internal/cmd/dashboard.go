@@ -84,6 +84,26 @@ func runDashboard() error {
 		}
 		return nil, fmt.Errorf("worktree %s/%s not found", sessionID, worktreeName)
 	})
+	// The `P` preview reads the FULL pane (n=0) for a persistent side panel that tails
+	// live output. Reuses the same resolve pattern as the peek seam above.
+	model.SetPreview(func(sessionID, worktreeName string) ([]string, error) {
+		st, err := loadState()
+		if err != nil {
+			return nil, err
+		}
+		for i := range st.Sessions {
+			if st.Sessions[i].ID != sessionID {
+				continue
+			}
+			sess := &st.Sessions[i]
+			for j := range sess.Worktrees {
+				if sess.Worktrees[j].Name == worktreeName {
+					return tmux.CapturePane(sess.TmuxName, sess.Worktrees[j].TmuxWindowID, 0)
+				}
+			}
+		}
+		return nil, fmt.Errorf("worktree %s/%s not found", sessionID, worktreeName)
+	})
 	// The dashboard draws the folder/agent pickers as in-place modals (no child process takes
 	// the screen). These factories keep the catalog + folder scan in cmd, so tui stays free of
 	// that knowledge; the dashboard then ships the choice to a background `eme` invocation.

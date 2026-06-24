@@ -1224,6 +1224,40 @@ func TestWorktreeOrder_AttentionFirstWithAgeTiebreak(t *testing.T) {
 	}
 }
 
+func TestTogglePreview_RefusesWhenNarrow(t *testing.T) {
+	m := &DashboardModel{width: 60, height: 24, collapsed: map[string]bool{},
+		views: []SessionView{{Worktrees: []WorktreeView{{Name: "w", SessionID: "s"}}}}}
+	m.rebuildRows()
+	m.cursor = 1
+	m.previewCapture = func(string, string) ([]string, error) { return []string{"hi"}, nil }
+	m.togglePreview()
+	if m.preview {
+		t.Error("preview must refuse to open below previewMinWidth")
+	}
+	if m.notice == "" {
+		t.Error("a refusal should explain why (notice)")
+	}
+}
+
+func TestPreview_OpensAndRendersHeader(t *testing.T) {
+	m := &DashboardModel{width: 100, height: 24, collapsed: map[string]bool{},
+		views: []SessionView{{Worktrees: []WorktreeView{
+			{Name: "feat", SessionID: "s", Status: StatusWorking, AgeLabel: "3m"}}}}}
+	m.rebuildRows()
+	m.cursor = 1
+	m.previewCapture = func(sid, name string) ([]string, error) { return []string{"line-A", "line-B"}, nil }
+	m.togglePreview()
+	if !m.preview || m.previewLabel != "feat" {
+		t.Fatalf("preview not opened for feat: open=%v label=%q", m.preview, m.previewLabel)
+	}
+	out := m.View()
+	for _, want := range []string{"feat", "3m", "line-B"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("preview view missing %q", want)
+		}
+	}
+}
+
 func TestToggleSort_KeepsCursorOnIdentity(t *testing.T) {
 	m := &DashboardModel{views: []SessionView{{Worktrees: []WorktreeView{
 		{Name: "idle", SessionID: "s", Status: StatusIdle},

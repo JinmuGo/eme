@@ -73,6 +73,10 @@ const (
 	rowWorktree
 )
 
+// previewMinWidth is the minimum terminal width at which the P side preview panel is
+// allowed to open. Below this a split would crush both the tree and the preview pane.
+const previewMinWidth = 72
+
 // rowRef points at a row within the view-model: either a session header
 // (kind==rowSession) or a worktree under it (kind==rowWorktree, worktree valid).
 type rowRef struct {
@@ -143,6 +147,14 @@ type DashboardModel struct {
 	// Name) so a reload can tell whether the peek's row is still the selected one —
 	// Name alone is ambiguous across sessions.
 	peekSID string
+	// preview is a persistent side panel (P) showing the selected agent's live output,
+	// re-captured on cursor move and on each tick — the babysit-one-agent companion to the
+	// momentary `p` peek. previewCapture reads the FULL pane (the box clamps to its height).
+	preview        bool
+	previewLines   []string
+	previewLabel   string
+	previewSID     string
+	previewCapture func(sessionID, worktreeName string) ([]string, error)
 	// modal, when non-nil, is an in-dashboard dialog (worktree-name input, agent picker, or
 	// folder picker) drawn centered over the frozen tree via overlayCenter — so an action's
 	// prompt never clears the dashboard. While it is open it owns the keyboard; flow holds
@@ -443,21 +455,27 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor > 0 {
 				m.cursor--
 			}
+			m.refreshPreview()
 		case "down", "j":
 			m.closePeek()
 			if m.cursor < len(m.rows)-1 {
 				m.cursor++
 			}
+			m.refreshPreview()
 		case "left", "h":
 			m.closePeek()
 			m.foldLeft()
+			m.refreshPreview()
 		case "right", "l":
 			m.closePeek()
 			if cmd := m.foldRightOrOpen(); cmd != nil {
 				return m, cmd
 			}
+			m.refreshPreview()
 		case "p":
 			m.togglePeek()
+		case "P":
+			m.togglePreview()
 		case "s":
 			m.toggleSortMode()
 		case "enter", "o":
@@ -576,8 +594,23 @@ func (m *DashboardModel) View() string {
 	if height < 10 {
 		height = 24
 	}
-	boxWidth := width - 2 // total minus the left/right border columns
-	inner := width - 4    // text area inside the border + horizontal padding
+	// Reserve the preview panel's width BEFORE computing boxWidth/inner so the whole
+	// existing single-column render shrinks to the tree's column automatically.
+	previewOn := m.preview && width >= previewMinWidth
+	var previewW int
+	if previewOn {
+		previewW = width * 2 / 5 // ~40% to the preview
+		if previewW < 28 {
+			previewW = 28
+		}
+		if width-previewW < 40 { // never starve the tree
+			previewOn = false
+			previewW = 0
+		}
+	}
+	treeWidth := width - previewW
+	boxWidth := treeWidth - 2 // total minus the left/right border columns
+	inner := treeWidth - 4    // text area inside the border + horizontal padding
 	if inner < 24 {
 		inner = 24
 	}
@@ -672,6 +705,9 @@ func (m *DashboardModel) View() string {
 	lines = append(lines, bottom...)
 
 	panel := panelStyle.Width(boxWidth).Render(strings.Join(lines, "\n"))
+	if previewOn {
+		panel = lipgloss.JoinHorizontal(lipgloss.Top, panel, m.previewBox(previewW, height))
+	}
 	// An open dialog is drawn centered over the (frozen) tree, so an action's prompt floats
 	// on top of the dashboard instead of clearing it.
 	if m.modal != nil {
@@ -904,6 +940,37 @@ func (m *DashboardModel) peekBlock(inner int) []string {
 	return out
 }
 
+// previewBox renders the side preview as its own bordered box: a header (worktree · status
+// · age, plus a muted "quiet" tag) and the captured pane tail, clamped to the box height.
+func (m *DashboardModel) previewBox(width, height int) string {
+	inner := width - 4
+	if inner < 8 {
+		inner = 8
+	}
+	head := m.previewLabel
+	if w := m.selected(); w != nil {
+		head += "  " + mutedStyle.Render(w.Status.Label())
+		if w.AgeLabel != "" {
+			head += " " + mutedStyle.Render(w.AgeLabel)
+		}
+		if w.Quiet {
+			head += " " + mutedStyle.Render("quiet")
+		}
+	}
+	rows := []string{clampWidth(titleStyle.Render(head), inner), clampWidth(mutedStyle.Render(strings.Repeat("─", inner)), inner)}
+	body := m.previewLines
+	if len(body) == 0 {
+		body = []string{mutedStyle.Render("(no output)")}
+	}
+	if max := (height - 2) - len(rows); max >= 1 && len(body) > max {
+		body = body[len(body)-max:] // keep the freshest tail
+	}
+	for _, ln := range body {
+		rows = append(rows, clampWidth(truncateWidth(ln, inner), inner))
+	}
+	return panelStyle.Width(width - 2).Height(height - 2).Render(strings.Join(rows, "\n"))
+}
+
 // truncate shortens s to at most max display columns, adding an ellipsis.
 func truncate(s string, max int) string {
 	if max < 1 {
@@ -1056,6 +1123,58 @@ func (m *DashboardModel) closePeek() {
 	m.peekSID = ""
 }
 
+// SetPreview installs the read-only full-pane capture the P side preview uses.
+func (m *DashboardModel) SetPreview(fn func(sessionID, worktreeName string) ([]string, error)) {
+	m.previewCapture = fn
+}
+
+// togglePreview opens the side preview for the selected worktree or closes it. It refuses
+// below previewMinWidth (the split would crush both panes) with an explaining notice.
+func (m *DashboardModel) togglePreview() {
+	if m.preview {
+		m.closePreview()
+		return
+	}
+	if m.width > 0 && m.width < previewMinWidth {
+		m.notice = "terminal too narrow for the side preview — widen the popup or use p to peek"
+		return
+	}
+	if m.selected() == nil {
+		m.notice = "select a worktree to preview (the cursor is on a session)"
+		return
+	}
+	m.preview = true
+	m.refreshPreview()
+}
+
+// refreshPreview re-captures the selected pane into the panel; it closes the preview when
+// the selection is gone, and keeps the last lines on a transient capture error (F1).
+func (m *DashboardModel) refreshPreview() {
+	if !m.preview {
+		return
+	}
+	w := m.selected()
+	if w == nil {
+		m.closePreview()
+		return
+	}
+	m.previewLabel, m.previewSID = w.Name, w.SessionID
+	if m.previewCapture == nil {
+		return
+	}
+	if lines, err := m.previewCapture(w.SessionID, w.Name); err == nil {
+		m.previewLines = lines
+	}
+}
+
+// closePreview tears the panel down so the tree reclaims the full width.
+func (m *DashboardModel) closePreview() {
+	m.preview = false
+	m.previewLines = nil
+	m.previewLabel = ""
+	m.previewSID = ""
+}
+
 // reconcilePeek closes the peek when its worktree is no longer the row under the cursor
 // — the momentary glance must not outlive the selection that opened it (DESIGN §5.7).
 // Called after every reload so an auto-refresh that drops or reorders the peeked row
@@ -1084,6 +1203,7 @@ func (m *DashboardModel) tickReload() {
 	}
 	carryDiffStats(views, m.views)
 	m.applyViews(views)
+	m.refreshPreview()
 }
 
 // restoreCursorByIdentity points the cursor at the row matching the given identity (a
