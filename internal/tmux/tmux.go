@@ -417,7 +417,7 @@ func RespawnPane(session, windowID, cwd string) error {
 }
 
 // CapturePane returns the last n non-blank lines of a window's pane content, for the
-// read-only preview peek (DESIGN §5.7). capture-pane -p prints the pane without -e,
+// read-only side preview (DESIGN §5.7). capture-pane -p prints the pane without -e,
 // so the result is plain text (no escape sequences) and the read never mutates the
 // pane — safe on a live agent.
 func CapturePane(session, windowID string, n int) ([]string, error) {
@@ -428,7 +428,7 @@ func CapturePane(session, windowID string, n int) ([]string, error) {
 	}
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	// A pane is padded to its full height, so trim trailing blank lines before taking
-	// the tail — otherwise the peek shows mostly empty rows.
+	// the tail — otherwise the preview shows mostly empty rows.
 	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
 		lines = lines[:len(lines)-1]
 	}

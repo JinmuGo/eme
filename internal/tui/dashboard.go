@@ -137,21 +137,9 @@ type DashboardModel struct {
 	// state + snapshot, no git diff / reconcile). Installed via SetStatusReload; when
 	// nil the ticker is inert.
 	statusReload func() ([]SessionView, error)
-	// peek captures the selected pane's last lines on demand (read-only). Installed
-	// via SetPeek; when nil the `p` peek is inert. peeking/peekLines/peekLabel hold
-	// the current on-demand peek — a momentary glance, not a standing panel, so they
-	// are cleared the moment the cursor moves (DESIGN §5.7).
-	peek      func(sessionID, worktreeName string) ([]string, error)
-	peeking   bool
-	peekLines []string
-	peekLabel string
-	// peekSID is the SessionID of the peeked worktree, kept alongside peekLabel (its
-	// Name) so a reload can tell whether the peek's row is still the selected one —
-	// Name alone is ambiguous across sessions.
-	peekSID string
-	// preview is a persistent side panel (P) showing the selected agent's live output,
-	// re-captured on cursor move and on each tick — the babysit-one-agent companion to the
-	// momentary `p` peek. previewCapture reads the FULL pane (the box clamps to its height).
+	// preview is a persistent side panel (p) showing the selected agent's live output,
+	// re-captured on cursor move and on each tick — a babysit-one-agent panel that follows
+	// the cursor. previewCapture reads the FULL pane (the box clamps to its height).
 	preview        bool
 	previewLines   []string
 	previewLabel   string
@@ -483,36 +471,29 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "?":
 			m.showHelp = !m.showHelp
 		case "up", "k":
-			m.closePeek() // the peek belonged to the row we're leaving
 			if m.cursor > 0 {
 				m.cursor--
 			}
 			m.refreshPreview()
 		case "down", "j":
-			m.closePeek()
 			if m.cursor < len(m.rows)-1 {
 				m.cursor++
 			}
 			m.refreshPreview()
 		case "left", "h":
-			m.closePeek()
 			m.foldLeft()
 			m.refreshPreview()
 		case "right", "l":
-			m.closePeek()
 			if cmd := m.foldRightOrOpen(); cmd != nil {
 				return m, cmd
 			}
 			m.refreshPreview()
 		case "p":
-			m.togglePeek()
-		case "P":
 			m.togglePreview()
 		case "s":
 			m.toggleSortMode()
 		case "enter", "o":
 			if r := m.currentRow(); r != nil && r.kind == rowSession {
-				m.closePeek()
 				m.toggleFold(r.session)
 			} else if w := m.selected(); w != nil {
 				// Record the target and quit cleanly; the cmd layer execs
@@ -589,7 +570,6 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.notice = ""
 			return m, m.runChildBackground("caffeinate", sessionKey(m.views[si]), "--mode", nextCaffeinateMode(m.views[si].Caffeinate))
 		case "d":
-			m.closePeek() // a confirm prompt replaces the peek; never stack the two
 			if r := m.currentRow(); r != nil && r.kind == rowSession {
 				sv := m.views[r.session]
 				m.pending = &killTarget{sessionID: sessionKey(sv), isMain: true, label: "project " + sv.DisplayName}
@@ -675,15 +655,10 @@ func (m *DashboardModel) View() string {
 		header = append(header, schemaLine(inner))
 	}
 
-	// Bottom block (peek + notice/confirm + footer), built before the body so the body's
-	// row budget can subtract it. Each entry is wrapped/clamped to a single terminal row so
-	// the height accounting below counts real rows, not logical strings that may soft-wrap.
+	// Bottom block (notice/confirm + footer), built before the body so the body's row
+	// budget can subtract it. Each entry is wrapped/clamped to a single terminal row so the
+	// height accounting below counts real rows, not logical strings that may soft-wrap.
 	var bottom []string
-	if m.peeking {
-		for _, ln := range m.peekBlock(inner) {
-			bottom = append(bottom, clampWidth(ln, inner))
-		}
-	}
 	if m.pending != nil {
 		switch {
 		case m.pending.escalated:
@@ -698,13 +673,13 @@ func (m *DashboardModel) View() string {
 	}
 	help := "↑↓/jk move · ←→/hl fold · ↵ open · n new · d kill · ? more · q quit"
 	if m.showHelp {
-		help = "↑↓/jk move · ←→/hl fold · ↵/o open · p peek · P preview · n new · c worktree · a agent · A pick · x clean · s sort · w wake · d kill · q quit · ?"
+		help = "↑↓/jk move · ←→/hl fold · ↵/o open · p preview · n new · c worktree · a agent · A pick · x clean · s sort · w wake · d kill · q quit · ?"
 	}
 	bottom = append(bottom, wrapStyled(helpStyle, help, inner)...)
 
 	// Never let the bottom block crowd out the whole tree: keep at least one body row, and
-	// if the block is itself taller than the popup, drop its leading rows (the peek) so the
-	// footer — the last and most load-bearing line — always survives.
+	// if the block is itself taller than the popup, drop its leading rows (the confirm/notice)
+	// so the footer — the last and most load-bearing line — always survives.
 	if maxBottom := innerHeight - len(header) - 1; maxBottom >= 1 && len(bottom) > maxBottom {
 		bottom = bottom[len(bottom)-maxBottom:]
 	}
@@ -824,7 +799,7 @@ func windowBody(body []string, cursorLine, capacity int) []string {
 		return out
 	}
 	// No marker arrangement fits — the window is too small (1–2 rows, e.g. a short popup
-	// with the peek open) to spare a row for a "more" hint. Fall back to a marker-less
+	// with a confirm prompt up) to spare a row for a "more" hint. Fall back to a marker-less
 	// window centered on the cursor so the selected row stays visible (we lose only the
 	// hint, never the cursor) instead of anchoring at the top and scrolling it off-screen.
 	start := cursorLine - capacity/2
@@ -971,24 +946,6 @@ func (m *DashboardModel) sessionLine(si int, selected bool, inner int) string {
 	return row
 }
 
-// peekBlock renders the on-demand peek: a quiet rule, a label, then the captured
-// last lines — all muted so the peek stays subordinate to the tree and never
-// competes with the beacon. Rendered only while peeking, so it spends zero rows
-// otherwise (DESIGN §5.7).
-func (m *DashboardModel) peekBlock(inner int) []string {
-	out := []string{
-		mutedStyle.Render(strings.Repeat("─", inner)),
-		mutedStyle.Render("peek " + m.peekLabel),
-	}
-	if len(m.peekLines) == 0 {
-		return append(out, mutedStyle.Render("  (no output)"))
-	}
-	for _, ln := range m.peekLines {
-		out = append(out, mutedStyle.Render("  "+truncate(ln, inner-2)))
-	}
-	return out
-}
-
 // previewBox renders the side preview as its own bordered box: a header (worktree · status
 // · age, plus a muted "quiet" tag) and the captured pane tail, clamped to the box height.
 func (m *DashboardModel) previewBox(width, height int) string {
@@ -1104,7 +1061,6 @@ func padCell(s string, width int) string {
 // output is the child's combined output — preferred for the notice because it carries
 // eme's friendly message (summary line) rather than a bare "exit status 1".
 func (m *DashboardModel) refresh(actionErr error, output string) {
-	m.closePeek() // the action may have changed the pane; the captured peek is now stale
 	switch {
 	case actionErr == nil:
 		m.notice = ""
@@ -1132,48 +1088,7 @@ func (m *DashboardModel) SetStatusReload(fn func() ([]SessionView, error)) {
 	m.statusReload = fn
 }
 
-// SetPeek installs the read-only pane-capture used by the `p` peek. When nil the
-// peek is inert (e.g. in tests).
-func (m *DashboardModel) SetPeek(fn func(sessionID, worktreeName string) ([]string, error)) {
-	m.peek = fn
-}
-
-// togglePeek opens the on-demand peek for the selected worktree, or closes it if
-// already open. The capture is read once (a momentary glance, not a live tail); a
-// failure surfaces as a transient notice and leaves the peek closed.
-func (m *DashboardModel) togglePeek() {
-	if m.peeking {
-		m.closePeek()
-		return
-	}
-	w := m.selected()
-	if w == nil {
-		m.notice = "select a worktree to peek (the cursor is on a session)"
-		return
-	}
-	if m.peek == nil {
-		return
-	}
-	lines, err := m.peek(w.SessionID, w.Name)
-	if err != nil {
-		m.notice = "peek failed: " + err.Error()
-		return
-	}
-	m.peeking = true
-	m.peekLines = lines
-	m.peekLabel = w.Name
-	m.peekSID = w.SessionID
-}
-
-// closePeek clears the peek so no rows are spent when not peeking.
-func (m *DashboardModel) closePeek() {
-	m.peeking = false
-	m.peekLines = nil
-	m.peekLabel = ""
-	m.peekSID = ""
-}
-
-// SetPreview installs the read-only full-pane capture the P side preview uses.
+// SetPreview installs the read-only full-pane capture the side preview uses.
 func (m *DashboardModel) SetPreview(fn func(sessionID, worktreeName string) ([]string, error)) {
 	m.previewCapture = fn
 }
@@ -1186,7 +1101,7 @@ func (m *DashboardModel) togglePreview() {
 		return
 	}
 	if m.width > 0 && m.width < previewMinWidth {
-		m.notice = "terminal too narrow for the side preview — widen the popup or use p to peek"
+		m.notice = "terminal too narrow for the side preview — widen the popup"
 		return
 	}
 	if m.selected() == nil {
@@ -1225,20 +1140,6 @@ func (m *DashboardModel) closePreview() {
 	m.previewSID = ""
 }
 
-// reconcilePeek closes the peek when its worktree is no longer the row under the cursor
-// — the momentary glance must not outlive the selection that opened it (DESIGN §5.7).
-// Called after every reload so an auto-refresh that drops or reorders the peeked row
-// never leaves a stale panel attributed to the wrong worktree. A reload that keeps the
-// same row selected leaves the peek untouched, so reading it isn't interrupted.
-func (m *DashboardModel) reconcilePeek() {
-	if !m.peeking {
-		return
-	}
-	if w := m.selected(); w == nil || w.SessionID != m.peekSID || w.Name != m.peekLabel {
-		m.closePeek()
-	}
-}
-
 // tickReload refreshes agent status from the cheap snapshot path on each tick,
 // carrying the last-known diff forward (the status path skips git diff) and keeping
 // the cursor sticky. A transient read failure is silent — last-known views are kept,
@@ -1257,28 +1158,26 @@ func (m *DashboardModel) tickReload() {
 }
 
 // restoreCursorByIdentity points the cursor at the row matching the given identity (a
-// session header by wantSession, or a worktree by wantSID+wantName), reconciling the peek;
-// if none matches, the clamped index from rebuildRows stands and the peek is dropped.
+// session header by wantSession, or a worktree by wantSID+wantName); if none matches, the
+// clamped index from rebuildRows stands. The side preview follows the cursor via the
+// refreshPreview the reload callers run after this.
 func (m *DashboardModel) restoreCursorByIdentity(wantSession, wantSID, wantName string) {
 	for i, r := range m.rows {
 		switch r.kind {
 		case rowSession:
 			if wantSession != "" && sessionKey(m.views[r.session]) == wantSession {
 				m.cursor = i
-				m.reconcilePeek()
 				return
 			}
 		case rowWorktree:
 			if wantSID != "" {
 				if w := m.views[r.session].Worktrees[r.worktree]; w.SessionID == wantSID && w.Name == wantName {
 					m.cursor = i
-					m.reconcilePeek()
 					return
 				}
 			}
 		}
 	}
-	m.reconcilePeek()
 }
 
 // toggleSortMode flips attention-first sort, rebuilds, and keeps the cursor on the same

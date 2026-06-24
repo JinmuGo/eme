@@ -196,7 +196,7 @@ func TestNewWindow_CreatesDetached(t *testing.T) {
 	}
 }
 
-// TestCapturePane_TailAndTrim verifies the peek read trims a pane's trailing blank
+// TestCapturePane_TailAndTrim verifies the capture trims a pane's trailing blank
 // padding and returns only the last n lines, read-only.
 func TestCapturePane_TailAndTrim(t *testing.T) {
 	mock := runner.NewMock()
@@ -225,7 +225,7 @@ func TestCapturePane_TailAndTrim(t *testing.T) {
 	}
 }
 
-// TestCapturePane_EmptyPane: an all-blank pane peeks to zero lines, not a slice of
+// TestCapturePane_EmptyPane: an all-blank pane captures to zero lines, not a slice of
 // empty strings.
 func TestCapturePane_EmptyPane(t *testing.T) {
 	mock := runner.NewMock()

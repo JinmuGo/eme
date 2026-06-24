@@ -72,7 +72,7 @@ The tree uses vim/nvim-style motions — sessions fold like a file tree.
 | `→` / `l` | Expand a folded session, step into a session, or open a worktree |
 | `←` / `h` | Fold a session (from a worktree, fold its parent and jump to the header) |
 | `Enter` / `o` | On a worktree: switch to it · On a session header: toggle fold |
-| `p` | Peek the selected worktree's last pane lines (read-only) |
+| `p` | Preview the selected worktree's live pane output in a side panel (read-only) |
 | `n` | New project |
 | `c` | Create worktree in the session under the cursor |
 | `d` | Kill the worktree, or the whole project on a `main`/header row |

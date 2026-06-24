@@ -13,10 +13,6 @@ import (
 	"github.com/jinmu/eme/internal/tui"
 )
 
-// peekPaneLines is how many trailing pane lines the `p` peek shows — a glance, not
-// a panel (DESIGN §5.7).
-const peekPaneLines = 5
-
 func runDashboard() error {
 	s, err := loadReconciledState()
 	if err != nil {
@@ -66,28 +62,9 @@ func runDashboard() error {
 		}
 		return buildStatusViews(st.Sessions, snap, time.Now(), cfg.QuietAfterDuration()), nil
 	})
-	// The `p` peek reads the selected pane's last lines, read-only (capture-pane).
-	// Resolved against raw state so it always targets the live tmux window.
-	model.SetPeek(func(sessionID, worktreeName string) ([]string, error) {
-		st, err := loadState()
-		if err != nil {
-			return nil, err
-		}
-		for i := range st.Sessions {
-			if st.Sessions[i].ID != sessionID {
-				continue
-			}
-			sess := &st.Sessions[i]
-			for j := range sess.Worktrees {
-				if sess.Worktrees[j].Name == worktreeName {
-					return tmux.CapturePane(sess.TmuxName, sess.Worktrees[j].TmuxWindowID, peekPaneLines)
-				}
-			}
-		}
-		return nil, fmt.Errorf("worktree %s/%s not found", sessionID, worktreeName)
-	})
-	// The `P` preview reads the FULL pane (n=0) for a persistent side panel that tails
-	// live output. Reuses the same resolve pattern as the peek seam above.
+	// The `p` preview reads the FULL pane (n=0) for a persistent side panel that tails live
+	// output, read-only (capture-pane). Resolved against raw state so it always targets the
+	// live tmux window.
 	model.SetPreview(func(sessionID, worktreeName string) ([]string, error) {
 		st, err := loadState()
 		if err != nil {

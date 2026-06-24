@@ -86,7 +86,7 @@ func cleanWorktree(sess *state.Session, w *state.Worktree) error {
 // refuses: a live agent's pane is not dead, so this no-ops there, and likewise on an
 // idle shell. Best-effort (a failed snapshot or respawn is ignored). Callers use it
 // so switching into an exited worktree lands on a usable shell instead of a "Pane is
-// dead" screen; `p` (peek) still inspects a dead pane without reviving it.
+// dead" screen; the `p` preview still inspects a dead pane without reviving it.
 func reviveIfDead(s *state.State, sess *state.Session, w *state.Worktree) {
 	snap, err := tmux.PanesSnapshot()
 	if err != nil {

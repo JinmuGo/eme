@@ -572,156 +572,52 @@ func TestDashboardFoldStateSurvivesReload(t *testing.T) {
 	}
 }
 
-// TestDashboardPeekToggle: `p` opens the read-only peek for the selected worktree
+// TestDashboardPreviewToggleKey: `p` opens the side preview for the selected worktree
 // and renders the captured lines; `p` again closes it.
-func TestDashboardPeekToggle(t *testing.T) {
+func TestDashboardPreviewToggleKey(t *testing.T) {
 	m := NewDashboard(sampleViews(), nil)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
 	m.cursor = 2 // myapp/feat
 	var gotID, gotName string
-	m.SetPeek(func(id, name string) ([]string, error) {
+	m.SetPreview(func(id, name string) ([]string, error) {
 		gotID, gotName = id, name
 		return []string{"building...", "done"}, nil
 	})
 
 	m.Update(runeKey('p'))
-	if !m.peeking {
-		t.Fatal("p should open the peek")
+	if !m.preview {
+		t.Fatal("p should open the side preview")
 	}
 	if gotID != "myapp" || gotName != "feat" {
-		t.Errorf("peek targeted %s/%s, want myapp/feat", gotID, gotName)
-	}
-	if len(m.peekLines) != 2 || m.peekLines[1] != "done" {
-		t.Errorf("peekLines = %v, want the captured lines", m.peekLines)
+		t.Errorf("preview targeted %s/%s, want myapp/feat", gotID, gotName)
 	}
 	if !strings.Contains(m.View(), "done") {
-		t.Error("View should show the peeked lines while peeking")
+		t.Error("View should show the previewed lines while open")
 	}
 
 	m.Update(runeKey('p'))
-	if m.peeking {
-		t.Error("second p should close the peek")
+	if m.preview {
+		t.Error("second p should close the preview")
 	}
 	if strings.Contains(m.View(), "done") {
-		t.Error("closed peek must spend zero rows")
+		t.Error("closed preview must spend no space")
 	}
 }
 
-// TestDashboardPeekClosesOnMove: the peek belongs to the row it was opened on, so
-// moving the cursor closes it (never a standing panel; DESIGN §5.7).
-func TestDashboardPeekClosesOnMove(t *testing.T) {
+// TestDashboardPreviewClosesOnMoveToHeader: the preview follows the cursor, so moving onto
+// a session header (which has no pane) tears it down.
+func TestDashboardPreviewClosesOnMoveToHeader(t *testing.T) {
 	m := NewDashboard(sampleViews(), nil)
-	m.cursor = 1 // a worktree row, so the peek can open
-	m.SetPeek(func(id, name string) ([]string, error) { return []string{"x"}, nil })
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	m.cursor = 1 // myapp/main, a worktree row
+	m.SetPreview(func(id, name string) ([]string, error) { return []string{"x"}, nil })
 	m.Update(runeKey('p'))
-	if !m.peeking {
-		t.Fatal("precondition: peek open")
+	if !m.preview {
+		t.Fatal("precondition: preview open")
 	}
-	m.Update(runeKey('j'))
-	if m.peeking {
-		t.Error("moving down should close the peek")
-	}
-}
-
-// TestDashboardPeekNilSeamIsNoop: with no peek installed, `p` is inert (no panic).
-func TestDashboardPeekNilSeamIsNoop(t *testing.T) {
-	m := NewDashboard(sampleViews(), nil)
-	m.cursor = 1 // a worktree row: exercise the nil peek seam, not the header no-op
-	m.Update(runeKey('p'))
-	if m.peeking {
-		t.Error("p with no peek seam should stay closed")
-	}
-}
-
-// TestDashboardPeekErrorSurfacesNotice: a capture failure shows a transient notice
-// and leaves the peek closed (never a false panel).
-func TestDashboardPeekErrorSurfacesNotice(t *testing.T) {
-	m := NewDashboard(sampleViews(), nil)
-	m.cursor = 1 // a worktree row, so the peek fn is actually invoked
-	m.SetPeek(func(id, name string) ([]string, error) { return nil, errors.New("pane gone") })
-	m.Update(runeKey('p'))
-	if m.peeking {
-		t.Error("peek should stay closed on error")
-	}
-	if m.notice != "peek failed: pane gone" {
-		t.Errorf("notice = %q, want the peek error surfaced", m.notice)
-	}
-}
-
-// TestDashboardPeekClosesWhenPeekedRowVanishesOnTick: an auto-refresh that drops the
-// peeked worktree must close the peek — the cursor falls onto a different row, so a
-// standing peek would mislabel stale output (DESIGN §5.7).
-func TestDashboardPeekClosesWhenPeekedRowVanishesOnTick(t *testing.T) {
-	m := NewDashboard(sampleViews(), nil)
-	m.cursor = 2 // myapp/feat
-	m.SetPeek(func(id, name string) ([]string, error) { return []string{"stale output"}, nil })
-	m.Update(runeKey('p'))
-	if !m.peeking {
-		t.Fatal("precondition: peek open on feat")
-	}
-	// feat disappears on the next status tick.
-	m.SetStatusReload(func() ([]SessionView, error) {
-		return []SessionView{
-			{DisplayName: "myapp", Root: "/code/myapp", Worktrees: []WorktreeView{
-				{Name: "main", SessionID: "myapp", IsMain: true, Status: StatusWorking},
-			}},
-		}, nil
-	})
-	m.tickReload()
-	if m.peeking {
-		t.Error("a tick that drops the peeked worktree must close the peek")
-	}
-}
-
-// TestDashboardPeekSurvivesTickWhenRowUnchanged: a routine tick that keeps the peeked
-// row selected must NOT close the peek — only a cursor move or a vanished row dismisses
-// it, so reading a peek isn't interrupted every 2s.
-func TestDashboardPeekSurvivesTickWhenRowUnchanged(t *testing.T) {
-	m := NewDashboard(sampleViews(), nil)
-	m.cursor = 1 // myapp/main
-	m.SetPeek(func(id, name string) ([]string, error) { return []string{"live"}, nil })
-	m.Update(runeKey('p'))
-	if !m.peeking {
-		t.Fatal("precondition: peek open on main")
-	}
-	m.SetStatusReload(func() ([]SessionView, error) { return sampleViews(), nil })
-	m.tickReload()
-	if !m.peeking {
-		t.Error("a tick that keeps the peeked row selected must leave the peek open")
-	}
-}
-
-// TestDashboardPeekClosesAfterChildAction: a child action (refresh path) dismisses the
-// peek — the action may change the pane, so the captured lines are stale.
-func TestDashboardPeekClosesAfterChildAction(t *testing.T) {
-	m := NewDashboard(sampleViews(), func() ([]SessionView, error) { return sampleViews(), nil })
-	m.cursor = 1
-	m.SetPeek(func(id, name string) ([]string, error) { return []string{"before"}, nil })
-	m.Update(runeKey('p'))
-	if !m.peeking {
-		t.Fatal("precondition: peek open")
-	}
-	m.refresh(nil, "") // as if a child action just returned
-	if m.peeking {
-		t.Error("a post-action refresh must close the momentary peek")
-	}
-}
-
-// TestDashboardPeekClosesOnKillStage: staging a kill confirm (d) dismisses the peek so
-// the confirm prompt is not rendered beneath a standing peek panel.
-func TestDashboardPeekClosesOnKillStage(t *testing.T) {
-	m := NewDashboard(sampleViews(), nil)
-	m.cursor = 2 // myapp/feat
-	m.SetPeek(func(id, name string) ([]string, error) { return []string{"x"}, nil })
-	m.Update(runeKey('p'))
-	if !m.peeking {
-		t.Fatal("precondition: peek open")
-	}
-	m.Update(runeKey('d'))
-	if m.peeking {
-		t.Error("staging a kill should close the peek")
-	}
-	if m.pending == nil {
-		t.Error("d should still stage the kill confirm")
+	m.Update(runeKey('k')) // up onto the myapp header
+	if m.preview {
+		t.Error("moving onto a session header should close the preview")
 	}
 }
 
@@ -775,13 +671,13 @@ func TestDashboardPerRowActionsNoticeOnHeader(t *testing.T) {
 	for _, key := range []rune{'p', 'a', 'A', 'x'} {
 		m := NewDashboard(sampleViews(), nil)
 		m.cursor = 0 // myapp header
-		m.SetPeek(func(string, string) ([]string, error) { return []string{"x"}, nil })
+		m.SetPreview(func(string, string) ([]string, error) { return []string{"x"}, nil })
 		m.Update(runeKey(key))
 		if m.notice == "" {
 			t.Errorf("%q on a session header should set an explanatory notice", key)
 		}
-		if m.peeking {
-			t.Errorf("%q on a header should not open a peek", key)
+		if m.preview {
+			t.Errorf("%q on a header should not open the preview", key)
 		}
 	}
 }
@@ -946,7 +842,7 @@ func TestDashboardViewNoLineWiderThanPopup(t *testing.T) {
 			"line-2",
 		}, nil
 	})
-	m2.Update(runeKey('P')) // toggle preview on
+	m2.Update(runeKey('p')) // toggle preview on
 	if !m2.preview {
 		t.Fatal("preview should open at width 100 (>= previewMinWidth)")
 	}
@@ -979,7 +875,7 @@ func TestDashboardViewKeepsCursorRowVisible(t *testing.T) {
 }
 
 // TestWindowBodyKeepsCursorVisibleAtSmallCapacity: when the body window collapses to 1–2
-// rows (a short popup with the peek open), windowBody must still keep the cursor's row on
+// rows (a short popup with a confirm prompt up), windowBody must still keep the cursor's row on
 // screen. At that size no "↑/↓ N more" marker can fit, so the marker-negotiation loop finds
 // no arrangement; the fix falls back to a marker-less window centered on the cursor instead
 // of anchoring at the top of the list (which silently scrolled the selected row off-screen).
@@ -1018,7 +914,7 @@ func TestDashboardViewExpandedHelpDoesNotOverflow(t *testing.T) {
 	if h := lipgloss.Height(v); h > 20 {
 		t.Errorf("expanded help pushed height to %d > 20\n%s", h, v)
 	}
-	if !strings.Contains(v, "peek") { // an expanded-help-only key
+	if !strings.Contains(v, "preview") { // an expanded-help-only key
 		t.Errorf("expanded help should be visible\n%s", v)
 	}
 	if !strings.Contains(v, "╰") {

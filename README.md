@@ -81,8 +81,8 @@ how long an agent has been waiting) and scopes `waiting` to real permission prom
 questions. If you installed eme's hooks before this, re-run `eme hooks install` once to
 upgrade — it rewrites only eme's own hooks and preserves everything else.
 
-In the dashboard: `s` floats the agents that need you to the top, `P` opens a live side
-preview of the selected agent (`p` is still a momentary peek). Configure the gone-quiet
+In the dashboard: `s` floats the agents that need you to the top, `p` opens a live side
+preview of the selected agent. Configure the gone-quiet
 threshold in `~/.config/eme/config.toml`:
 
 ```toml

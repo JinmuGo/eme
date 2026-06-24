@@ -56,7 +56,7 @@ func (m *DashboardModel) modalsWired() bool {
 // openModal makes mod the active dialog for flow, sizes it to the current terminal, and
 // returns its initial command (e.g. the input cursor blink).
 func (m *DashboardModel) openModal(mod overlayModal, flow *modalFlow) tea.Cmd {
-	m.closePeek()
+	m.closePreview()
 	m.notice = ""
 	m.modal = mod
 	m.flow = flow
