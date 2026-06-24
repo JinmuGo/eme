@@ -38,6 +38,7 @@ eme switch <session> [worktree]      # switch window
 eme kill <session> [worktree]        # remove (needs --force)
 eme agent <session> [worktree]       # toggle agent
 eme agent <session> [worktree] --pick # choose the worktree's agent
+eme caffeinate <session> --mode manual|auto|off  # keep the Mac awake (macOS)
 eme doctor         # verify environment
 eme --version      # print version
 ```
@@ -53,6 +54,10 @@ command = "opencode"
 [[agents]]
 name = "claude-resume"
 command = "claude --resume"
+
+[caffeinate]                # keep-awake (macOS); see "Keeping the Mac awake" below
+flags = "-i"               # caffeinate flags; -i blocks idle system sleep (display still sleeps)
+auto_grace_seconds = 60    # auto mode: stay awake this long after the last "working" sample
 ```
 
 You can override the agent per folder or per worktree from the dashboard.
@@ -74,6 +79,7 @@ The tree uses vim/nvim-style motions — sessions fold like a file tree.
 | `a` | Toggle agent in the selected worktree |
 | `A` | Pick the selected worktree's agent from the catalog |
 | `x` | Reset a crashed/exited worktree's pane back to idle |
+| `w` | Cycle the session's keep-awake: `off → manual → auto → off` (macOS) |
 | `?` | Toggle help |
 | `q` / `Esc` | Quit |
 
@@ -109,6 +115,34 @@ agents without it installed keep working with the foreground heuristic.
 Currently only Claude Code exposes the lifecycle hooks eme needs. One known gap: Claude's
 blocking choice menus (AskUserQuestion) don't fire the notification hook, so that
 particular waiting state isn't surfaced yet.
+
+## Keeping the Mac awake (caffeinate)
+
+When you kick off a long agent run and walk away, macOS idle-sleep can suspend the work.
+Designate a session to keep the Mac awake — per session, so only the projects you choose
+hold the machine up:
+
+```bash
+eme caffeinate <session> --mode manual   # keep awake for the whole session
+eme caffeinate <session> --mode auto     # keep awake only while an agent is working
+eme caffeinate <session> --mode off      # stop
+```
+
+Or press **`w`** in the dashboard to cycle the session under the cursor
+`off → manual → auto → off`. A session header shows **`(caf)`** for manual and
+**`(caf~)`** for auto.
+
+- **manual** holds a `caffeinate` assertion for as long as the session exists.
+- **auto** holds it only while an agent in the session is `working` (it reuses the same
+  status signal as the dashboard, so it works with or without the status hooks), and
+  releases `auto_grace_seconds` after everything goes idle so brief gaps between agent
+  turns don't drop sleep protection.
+
+The assertion runs in a hidden `__eme_caffeinate` tmux window **inside the session**, so
+it stops automatically the moment the session ends — there is no background daemon, and it
+keeps working even when the dashboard is closed. Tune it under `[caffeinate]` in the config
+(`flags`, default `-i` = block idle system sleep but let the display sleep;
+`auto_grace_seconds`, default `60`). The whole feature is a no-op on non-macOS platforms.
 
 ## Worktree layout
 

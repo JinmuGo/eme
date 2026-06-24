@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Keep the Mac awake for a session (macOS). Designate a session with
+  `eme caffeinate <session> --mode manual|auto|off`, or press `w` in the dashboard
+  to cycle `off → manual → auto → off`. `manual` holds a `caffeinate` assertion for
+  the whole session; `auto` holds it only while an agent is working in the session
+  (reusing the same status signal as the dashboard, so it works with or without the
+  status hooks) and releases after a short grace once everything goes idle. The
+  assertion runs in a hidden `__eme_caffeinate` tmux window inside the session, so it
+  stops automatically when the session ends — no background daemon, and it works even
+  when the dashboard is closed. A session header shows `(caf)` / `(caf~)` for
+  manual / auto. Tunable via `[caffeinate]` in the config (`flags`, default `-i`,
+  prevents idle system sleep while letting the display sleep; `auto_grace_seconds`,
+  default `60`). A no-op on non-macOS platforms.
 - Adopt a plain (non-git) folder in place. Picking a folder that already has
   content but is not a git repo — e.g. a multi-repo parent directory you want to
   drive a top-level agent in — now registers it as a `plain` project and runs the
