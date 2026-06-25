@@ -4,7 +4,7 @@
   --surface-2: #1b1e26;
   --border: #262c36;
   --text: #d7dbe0;
-  --muted: #828b98;
+  --muted: #969fad;
   --brand: #e8a21a;
   /* exact eme TUI theme colors (internal/tui/theme, dark) */
   --tui-bg: #121317;
@@ -222,11 +222,12 @@ main { max-width: 920px; margin: 0 auto; padding: 0 24px; }
 .tui-foot i { font-style: normal; opacity: 0.45; }
 
 /* ---- features ---- */
-.features {
+.features { margin: 84px 0 0; }
+.features .section-title { margin-top: 0; }
+.feature-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 18px;
-  margin: 84px 0 0;
 }
 .feature {
   background: var(--surface);
@@ -241,7 +242,25 @@ main { max-width: 920px; margin: 0 auto; padding: 0 24px; }
   letter-spacing: -0.01em;
   margin-bottom: 8px;
 }
-.feature p { color: var(--muted); font-size: 15px; line-height: 1.6; }
+.feature p { color: var(--muted); font-size: 16px; line-height: 1.6; }
+
+/* ---- how it works ---- */
+.how .section-title { margin-bottom: 22px; }
+.how-body {
+  max-width: 660px;
+  margin: 0 auto;
+  display: grid;
+  gap: 16px;
+}
+.how-body p { color: var(--muted); font-size: 16px; line-height: 1.68; }
+.how-body code {
+  font-family: var(--mono);
+  font-size: 0.86em;
+  color: var(--text);
+  background: var(--surface-2);
+  padding: 1px 6px;
+  border-radius: 5px;
+}
 .feature code, .key-desc code, .reqs code {
   font-size: 0.88em;
   color: var(--text);
@@ -303,7 +322,7 @@ main { max-width: 920px; margin: 0 auto; padding: 0 24px; }
   letter-spacing: -0.01em;
   margin-bottom: 7px;
 }
-.faq-item p { color: var(--muted); font-size: 15px; line-height: 1.62; }
+.faq-item p { color: var(--muted); font-size: 16px; line-height: 1.62; }
 .faq-item code {
   font-family: var(--mono);
   font-size: 0.86em;
@@ -335,7 +354,7 @@ main { max-width: 920px; margin: 0 auto; padding: 0 24px; }
 
 /* ---- responsive ---- */
 @media (max-width: 640px) {
-  .features { grid-template-columns: 1fr; }
+  .feature-grid { grid-template-columns: 1fr; }
   .hero { padding-top: 36px; }
   .install code { font-size: 13px; }
   /* drop the branch + location columns so the tree fits a phone */

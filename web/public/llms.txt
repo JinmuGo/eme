@@ -17,6 +17,8 @@ eme is for developers who run several AI coding agents in parallel (Claude Code,
 - Requirements: tmux >= 3.0, git >= 2.30, and an AI agent on your PATH.
 - Each worktree's agent shows one of: running, waiting (needs input), idle, exited, or crashed.
 - The dashboard tallies how many agents need you and lets you jump straight to them.
+- Built-in agents: claude, codex, gemini, opencode. Add or override others in `~/.config/eme/config.toml` under `[[agents]]` (name + command).
+- Status: eme reads each tmux pane's foreground process; `eme hooks install` lets the agent (Claude Code today) push its exact state into a tmux pane option that eme reads as ground truth.
 - Bind it to a tmux key (e.g. `bind-key a display-popup -E -w 80% -h 80% eme`) to open the dashboard in a popup.
 
 ## Links
@@ -26,3 +28,13 @@ eme is for developers who run several AI coding agents in parallel (Claude Code,
 - Documentation: https://github.com/JinmuGo/eme/blob/main/docs/usage.md
 - Releases: https://github.com/JinmuGo/eme/releases
 - Install script: https://eme.jinmu.me/install.sh
+
+## License
+
+eme is released under the MIT License: https://github.com/JinmuGo/eme/blob/main/LICENSE
+
+## Optional
+
+- Usage guide: https://github.com/JinmuGo/eme/blob/main/docs/usage.md
+- Changelog: https://github.com/JinmuGo/eme/blob/main/CHANGELOG.md
+- README: https://github.com/JinmuGo/eme/blob/main/README.md
