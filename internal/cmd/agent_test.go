@@ -12,15 +12,29 @@ import (
 	"github.com/JinmuGo/eme/internal/tui"
 )
 
-// stubWhich makes runner.Default answer `which <bin>` successfully and restores
-// it on cleanup.
+// stubWhich makes both the runner `which <bin>` and the lookPath agent resolver
+// answer for <bin> successfully, and restores them on cleanup. Stubbing lookPath
+// matters: the launch path (setWorktreeAgent/launchAgentCommand) resolves agents
+// through lookPath, not the runner, so without this the tests fall through to the
+// real exec.LookPath and depend on <bin> actually being installed — green locally,
+// but red in CI where the agent binary is absent.
 func stubWhich(t *testing.T, bin string) {
 	t.Helper()
 	prev := runner.Default
 	mock := runner.NewMock()
 	mock.Set("which", []string{bin}, "/usr/local/bin/"+bin, "", nil)
 	runner.Default = mock
-	t.Cleanup(func() { runner.Default = prev })
+	prevLook := lookPath
+	lookPath = func(b string) (string, error) {
+		if b == bin {
+			return "/usr/local/bin/" + bin, nil
+		}
+		return "", fmt.Errorf("%q not found on PATH", b)
+	}
+	t.Cleanup(func() {
+		runner.Default = prev
+		lookPath = prevLook
+	})
 }
 
 // captureSendKeys records the last (target, line) sent and restores sendKeys.
