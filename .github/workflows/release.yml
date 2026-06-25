@@ -28,6 +28,7 @@ jobs:
           version: "~> v2"
           args: ${{ github.event_name == 'pull_request' && 'release --snapshot --skip=publish --clean' || 'release --clean' }}
         env:
-          # PAT with write access to BOTH JinmuGo/eme and JinmuGo/homebrew-tap,
-          # so GoReleaser can publish the release and push Formula/eme.rb to the tap.
-          GITHUB_TOKEN: ${{ secrets.TOKEN }}
+          # The eme release uses the auto-provided token (has contents:write on this repo).
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The cross-repo Homebrew formula push uses the PAT (write access to homebrew-tap).
+          TAP_GITHUB_TOKEN: ${{ secrets.TOKEN }}

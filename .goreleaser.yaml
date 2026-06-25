@@ -54,6 +54,8 @@ brews:
     repository:
       owner: JinmuGo
       name: homebrew-tap
+      # cross-repo push uses the PAT; the eme release itself uses the default GITHUB_TOKEN
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     url_template: "https://github.com/JinmuGo/eme/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     commit_author:
       name: JinmuGo Bot
