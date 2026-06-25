@@ -6,10 +6,15 @@
   --text: #d7dbe0;
   --muted: #828b98;
   --brand: #e8a21a;
-  --s-wait: #e6a008;
-  --s-work: #6f9ac2;
-  --s-idle: #6b727d;
-  --s-crash: #e0681a;
+  /* exact eme TUI theme colors (internal/tui/theme, dark) */
+  --tui-bg: #121317;
+  --tui-border: #2a313a;
+  --tui-muted: #7c8693;
+  --s-wait: #e69f00;
+  --s-work: #5e86a8;
+  --s-idle: #5a626c;
+  --s-crash: #d55e00;
+  --s-exit: #98a0ab;
 
   --display: "Fraunces", Georgia, serif;
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -42,6 +47,7 @@ code, .mono { font-family: var(--mono); }
 .s-work { color: var(--s-work); }
 .s-idle { color: var(--s-idle); }
 .s-crash { color: var(--s-crash); }
+.s-exit { color: var(--s-exit); }
 .amber { color: var(--brand); }
 
 /* ---- header ---- */
@@ -83,10 +89,10 @@ main { max-width: 920px; margin: 0 auto; padding: 0 24px; }
 .hero-title {
   font-family: var(--display);
   font-weight: 600;
-  font-size: clamp(30px, 7.4vw, 64px);
-  line-height: 1.05;
+  font-size: clamp(25px, 6.6vw, 64px);
+  line-height: 1.06;
   letter-spacing: -1px;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 .hero-sub {
   max-width: 600px;
@@ -162,63 +168,56 @@ main { max-width: 920px; margin: 0 auto; padding: 0 24px; }
 .copy svg { width: 14px; height: 14px; }
 .copy.done { color: var(--s-work); border-color: var(--s-work); }
 
-/* ---- terminal mock ---- */
-.term {
+/* ---- eme dashboard render (mirrors the real TUI) ---- */
+.eme-tui {
   max-width: 600px;
   margin: 52px auto 0;
   text-align: left;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--tui-bg);
+  border: 1px solid var(--tui-border);
   border-radius: 12px;
+  padding: 15px 17px 13px;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.92;
+  box-shadow: 0 30px 70px -30px rgba(0, 0, 0, 0.85);
   overflow: hidden;
-  box-shadow: 0 30px 70px -30px rgba(0, 0, 0, 0.8);
 }
-.term-chrome {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 11px 15px;
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
-}
-.tc-dot { width: 11px; height: 11px; border-radius: 50%; background: #333a45; }
-.tc-dot:nth-child(1) { background: #46505d; }
-.term-name {
-  font-family: var(--display);
-  color: var(--brand);
-  font-weight: 600;
-  font-size: 15px;
-  margin-left: 8px;
-}
-.term-screen { padding: 16px 18px 14px; font-family: var(--mono); font-size: 13.5px; }
-.term-head { color: var(--muted); padding-bottom: 10px; }
-.term-head b { font-weight: 500; }
+.eme-tui b { font-weight: 600; }
+/* waiting + crashed fire bold in the real TUI; scope it so hero prose stays calm */
+.eme-tui .s-wait, .eme-tui .s-crash { font-weight: 600; }
 
-.wt {
+.tui-head { display: flex; align-items: baseline; justify-content: space-between; }
+.tui-mark { color: var(--text); font-weight: 700; } /* wordmark is neutral in-TUI — amber is the beacon */
+.tui-tally i { color: var(--tui-muted); font-style: normal; }
+.tui-rule { height: 0; border-top: 1px solid rgba(124, 134, 147, 0.32); margin: 7px 0; }
+
+/* schema + worktree rows share one grid so columns never drift */
+.tui-row {
   display: grid;
-  grid-template-columns: 1.5em 1fr auto auto;
+  grid-template-columns: 1em 7.4em 2.6em 7em 9.5em 1fr;
+  column-gap: 0.7em;
   align-items: baseline;
-  gap: 12px;
-  padding: 6px 10px;
-  margin: 0 -10px;
-  border-radius: 6px;
+  white-space: nowrap;
 }
-.wt.selected { background: var(--surface-2); box-shadow: inset 2px 0 0 var(--brand); }
-.glyph { font-size: 11px; }
-.wt-name { color: var(--text); }
-.wt-agent { color: var(--muted); }
-.wt-state { font-size: 12.5px; }
-.age { color: var(--muted); }
+.tui-schema { margin-bottom: 4px; }
+.tui-schema span { color: var(--tui-muted); }
 
-.term-foot {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-  color: var(--muted);
-  font-size: 12.5px;
-}
-.term-foot b { color: var(--text); font-weight: 500; }
-.term-foot .sep { opacity: 0.4; }
+.tui-sess { display: flex; align-items: baseline; gap: 0.5em; margin-top: 11px; }
+.tui-sess .caret { color: var(--tui-muted); }
+.tui-sess .sess { color: var(--text); font-weight: 700; }
+.tui-sess .root { color: var(--tui-muted); margin-left: auto; overflow: hidden; text-overflow: ellipsis; }
+
+.tui-row .st em { font-style: normal; }
+.tui-row .gut { color: var(--tui-muted); }
+.tui-row .age { color: var(--s-idle); }
+.tui-row .nm { color: var(--text); }
+.tui-row .br { color: var(--tui-muted); }
+.tui-row .lo { color: var(--tui-muted); overflow: hidden; text-overflow: ellipsis; }
+.tui-row.sel { background: #181c22; border-radius: 5px; margin: 0 -9px; padding: 0 9px; }
+
+.tui-foot { color: var(--tui-muted); margin-top: 13px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tui-foot i { font-style: normal; opacity: 0.45; }
 
 /* ---- features ---- */
 .features {
@@ -309,7 +308,11 @@ main { max-width: 920px; margin: 0 auto; padding: 0 24px; }
 @media (max-width: 640px) {
   .features { grid-template-columns: 1fr; }
   .hero { padding-top: 36px; }
-  .wt-agent { display: none; }
-  .term-screen { font-size: 12.5px; }
   .install code { font-size: 13px; }
+  /* drop the branch + location columns so the tree fits a phone */
+  .eme-tui { font-size: 12px; }
+  .tui-row { grid-template-columns: 0.9em 6.6em 2.4em 1fr; column-gap: 0.6em; }
+  .tui-row .br, .tui-row .lo,
+  .tui-schema span:nth-child(5), .tui-schema span:nth-child(6) { display: none; }
+  .tui-sess .root { font-size: 11px; }
 }

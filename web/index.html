@@ -88,43 +88,44 @@
           </button>
         </div>
 
-        <!-- CSS dashboard mock -->
-        <div class="term" aria-hidden="true">
-          <div class="term-chrome">
-            <span class="tc-dot"></span><span class="tc-dot"></span><span class="tc-dot"></span>
-            <span class="term-name">eme</span>
+        <!-- Faithful render of the eme dashboard (the real TUI) -->
+        <div class="eme-tui" aria-hidden="true">
+          <div class="tui-head">
+            <span class="tui-mark">eme</span>
+            <span class="tui-tally"><b class="s-wait">1 waiting</b><i> &middot; </i><b class="s-crash">1 crashed</b></span>
           </div>
-          <div class="term-screen">
-            <div class="term-head">eme &middot; 4 worktrees &middot; <b class="s-wait">1 waiting</b></div>
-            <div class="wt selected">
-              <span class="glyph s-wait">&#9679;</span>
-              <span class="wt-name">feature-auth</span>
-              <span class="wt-agent">claude</span>
-              <span class="wt-state s-wait">waiting <span class="age">2m</span></span>
-            </div>
-            <div class="wt">
-              <span class="glyph s-work">&#9679;</span>
-              <span class="wt-name">refactor-api</span>
-              <span class="wt-agent">codex</span>
-              <span class="wt-state s-work">working</span>
-            </div>
-            <div class="wt">
-              <span class="glyph s-idle">&#9675;</span>
-              <span class="wt-name">docs-site</span>
-              <span class="wt-agent">opencode</span>
-              <span class="wt-state s-idle">idle</span>
-            </div>
-            <div class="wt">
-              <span class="glyph s-crash">&#10007;</span>
-              <span class="wt-name">flaky-test</span>
-              <span class="wt-agent">claude</span>
-              <span class="wt-state s-crash">crashed</span>
-            </div>
-            <div class="term-foot">
-              <b>n</b> new <span class="sep">·</span> <b>c</b> worktree <span class="sep">·</span>
-              <b>a</b> agent <span class="sep">·</span> <b>s</b> sort <span class="sep">·</span> <b>&#9166;</b> switch
-            </div>
+          <div class="tui-rule"></div>
+          <div class="tui-row tui-schema">
+            <span></span><span>status</span><span>age</span><span>worktree</span><span>branch</span><span>location</span>
           </div>
+
+          <div class="tui-sess">
+            <span class="caret">&#9662;</span><span class="sess">1&nbsp;&nbsp;api</span><span class="root">~/code/api</span>
+          </div>
+          <div class="tui-row">
+            <span class="gut"></span><span class="st s-work">&#9680; <em>running</em></span><span class="age">2m</span><span class="nm">main</span><span class="br">main</span><span class="lo">api/main</span>
+          </div>
+          <div class="tui-row sel">
+            <span class="gut">&#9612;</span><span class="st s-wait">&#9679; <em>waiting</em></span><span class="age">5m</span><span class="nm">payments</span><span class="br">feat/payments</span><span class="lo">api/payments</span>
+          </div>
+          <div class="tui-row">
+            <span class="gut"></span><span class="st s-idle">&middot; <em>idle</em></span><span class="age"></span><span class="nm">refund</span><span class="br">fix/refund</span><span class="lo">api/refund</span>
+          </div>
+
+          <div class="tui-sess">
+            <span class="caret">&#9662;</span><span class="sess">2&nbsp;&nbsp;web</span><span class="root">~/code/web</span>
+          </div>
+          <div class="tui-row">
+            <span class="gut"></span><span class="st s-work">&#9680; <em>running</em></span><span class="age">1m</span><span class="nm">main</span><span class="br">main</span><span class="lo">web/main</span>
+          </div>
+          <div class="tui-row">
+            <span class="gut"></span><span class="st s-crash">&#10007; <em>crashed</em></span><span class="age"></span><span class="nm">flaky-spec</span><span class="br">test/flaky</span><span class="lo">web/flaky</span>
+          </div>
+          <div class="tui-row">
+            <span class="gut"></span><span class="st s-exit">&#9675; <em>exited</em></span><span class="age"></span><span class="nm">legacy</span><span class="br">feat/legacy</span><span class="lo">web/legacy</span>
+          </div>
+
+          <div class="tui-foot">&#8593;&#8595;/jk move <i>&middot;</i> &#8592;&#8594;/hl fold <i>&middot;</i> &#8629; open <i>&middot;</i> n new <i>&middot;</i> d kill <i>&middot;</i> ? more <i>&middot;</i> q quit</div>
         </div>
       </section>
 
