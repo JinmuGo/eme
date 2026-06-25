@@ -37,7 +37,10 @@ var (
 	rootStyle       = lipgloss.NewStyle().Foreground(theme.Muted)
 	branchStyle     = lipgloss.NewStyle().Foreground(theme.Muted)
 	locationStyle   = lipgloss.NewStyle().Foreground(theme.Muted) // worktree dir; reference info, no hue
-	caffeinateStyle = lipgloss.NewStyle().Foreground(theme.Working)
+	// caffeinateStyle renders the keep-awake badge as muted chrome — a session setting,
+	// not an agent status, so it must NOT wear the reserved working hue (DESIGN §3.3/§10:
+	// spend saturation only on the beacon and crash; meta-intents are muted reference info).
+	caffeinateStyle = lipgloss.NewStyle().Foreground(theme.Muted)
 	// ageStyle renders the age cell as muted reference info — a temporal qualifier on the
 	// status, never a hue of its own (DESIGN §5.3: age is chrome, not a signal channel).
 	ageStyle = lipgloss.NewStyle().Foreground(theme.Idle)
@@ -113,8 +116,12 @@ type DashboardModel struct {
 	// (off by default, toggled by `s`). rebuildRows is the single ordering authority, so the
 	// mode survives every reload/tick automatically; applyViews keeps the cursor on identity.
 	sortByAttention bool
-	width           int
-	height          int
+	// glyphFrame advances once per tick to animate the working spinner (◐◓◑◒); the
+	// waiting beacon never reads it, so it stays a static ●. Frame 0 renders ◐, so an
+	// un-ticked dashboard (and tests) read identically (DESIGN §5.1).
+	glyphFrame int
+	width      int
+	height     int
 	notice          string
 	pending         *killTarget
 	// lastDelete records the project a plain delete was just dispatched for, so an
@@ -396,14 +403,17 @@ func (m *DashboardModel) foldRightOrOpen() tea.Cmd {
 // reserved for waiting; a crash spends danger, never the beacon. Empty when nothing
 // waits or has crashed — the dark-cockpit ideal (no light = all fine).
 func (m *DashboardModel) tally() string {
-	var waiting, crashed int
+	var waiting, crashed, running, total int
 	for si := range m.views {
 		for _, w := range m.views[si].Worktrees {
+			total++
 			switch w.Status {
 			case StatusWaiting:
 				waiting++
 			case StatusCrashed:
 				crashed++
+			case StatusWorking:
+				running++
 			}
 		}
 	}
@@ -414,7 +424,38 @@ func (m *DashboardModel) tally() string {
 	if crashed > 0 {
 		parts = append(parts, errorStyle.Render(fmt.Sprintf("%d crashed", crashed)))
 	}
-	return strings.Join(parts, mutedStyle.Render(" · "))
+	if len(parts) > 0 {
+		return strings.Join(parts, mutedStyle.Render(" · "))
+	}
+	// Nothing waits or has crashed. A deliberately-opened popup earns a positive "all
+	// calm" confirmation — distinct from the ambient tmux segment, which stays dark-when-
+	// fine (DESIGN §5.6) — so the empty header never reads as "is the tally broken?". It's
+	// muted: it confirms the system is live without breaking the calm field or spending a
+	// status hue. Silent only when there is genuinely nothing to report (no worktrees).
+	if total == 0 {
+		return ""
+	}
+	if running > 0 {
+		return mutedStyle.Render(fmt.Sprintf("all calm · %d running", running))
+	}
+	return mutedStyle.Render("all calm")
+}
+
+// unhookedWorking counts live agents running WITHOUT a hook installed — panes that read
+// `working` but carry no @eme_state. These can never light the amber beacon on their own: a
+// hook is the only confirmed-waiting signal (DESIGN.md §5.2/F1), and silence only dims them
+// to `quiet`, never to `●`. The footer nudges `eme hooks install` so their waiting actually
+// surfaces as the beacon instead of being guessed at.
+func (m *DashboardModel) unhookedWorking() int {
+	var n int
+	for si := range m.views {
+		for _, w := range m.views[si].Worktrees {
+			if w.Status == StatusWorking && !w.Hooked {
+				n++
+			}
+		}
+	}
+	return n
 }
 
 // actionFinishedMsg is delivered after a child `eme` process exits. output carries the
@@ -602,6 +643,7 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.refresh(msg.err, msg.output)
 	case tickMsg:
+		m.glyphFrame++ // advance the working spinner; the static ● beacon ignores it
 		m.tickReload()
 		return m, m.tick()
 	}
@@ -642,8 +684,10 @@ func (m *DashboardModel) View() string {
 	}
 	innerHeight := height - 2 // minus the top/bottom border rows
 
-	// Header (2 rows): branding + rhyme (left), the waiting/crashed tally (right), a rule.
-	left := titleStyle.Render("eme") + "  " + rhymeStyle.Render("eeny · meeny · miny · moe")
+	// Header (2 rows): the wordmark (left), the waiting/crashed/all-calm tally (right), a
+	// rule. The rhyme is NOT here — brand spend stays off the populated cockpit (DESIGN §9);
+	// it lives on the first-run welcome, where the screen is otherwise bare and it sings.
+	left := titleStyle.Render("eme")
 	if m.sortByAttention {
 		left += "  " + mutedStyle.Render("· sort: attention")
 	}
@@ -671,9 +715,18 @@ func (m *DashboardModel) View() string {
 	} else if m.notice != "" {
 		bottom = append(bottom, wrapStyled(errorStyle, m.notice, inner)...)
 	}
+	// Hook-adoption nudge: when live agents are running un-hooked, one calm muted line points
+	// at the fix. Kept all-muted (no amber, no bold) so it teaches without spending a status
+	// hue or breaking the calm field; skipped on first run, where the welcome already teaches.
+	if n := m.unhookedWorking(); n > 0 && len(m.rows) > 0 {
+		bottom = append(bottom, wrapStyled(mutedStyle, fmt.Sprintf("%d un-hooked · eme hooks install for live status", n), inner)...)
+	}
 	help := "↑↓/jk move · ←→/hl fold · ↵ open · n new · d kill · ? more · q quit"
 	if m.showHelp {
 		help = "↑↓/jk move · ←→/hl fold · ↵/o open · p preview · n new · c worktree · a agent · A pick · x clean · s sort · w wake · d kill · q quit · ?"
+	}
+	if len(m.rows) == 0 {
+		help = "n new · q quit" // first run: only two moves matter
 	}
 	bottom = append(bottom, wrapStyled(helpStyle, help, inner)...)
 
@@ -690,7 +743,23 @@ func (m *DashboardModel) View() string {
 	var body []string
 	cursorLine := 0
 	if len(m.rows) == 0 {
-		body = append(body, "", clampWidth(mutedStyle.Render("No sessions. Press 'n' to create one."), inner))
+		// First run: the one place the calm field opens up and the playful voice is
+		// licensed inside the TUI (DESIGN §8). The wordmark, the rhyme (relocated here from
+		// the header), one line of what eme does, then the single next action. Still all
+		// muted/text, no amber — it welcomes and teaches instead of just reporting emptiness.
+		welcome := []string{
+			"",
+			textStyle.Render("eme") + mutedStyle.Render(" · mission control for your agents"),
+			rhymeStyle.Render("eeny · meeny · miny · moe"),
+			"",
+			mutedStyle.Render("Run agents across git worktrees."),
+			mutedStyle.Render("eme lights the one that's waiting for you."),
+			"",
+			mutedStyle.Render("Press ") + titleStyle.Render("n") + mutedStyle.Render(" to start one in a folder."),
+		}
+		for _, ln := range welcome {
+			body = append(body, centerLine(ln, inner))
+		}
 	} else {
 		for i, r := range m.rows {
 			if r.kind == rowSession && i > 0 {
@@ -741,6 +810,13 @@ func (m *DashboardModel) View() string {
 // rendered line occupies exactly one terminal row and the height math stays honest.
 func clampWidth(s string, width int) string {
 	return lipgloss.NewStyle().MaxWidth(width).Render(s)
+}
+
+// centerLine horizontally centers a (possibly styled) line within width columns — used by
+// the first-run welcome, the one screen the calm field opens up for. Clamps first so a
+// long line still occupies exactly one row.
+func centerLine(s string, width int) string {
+	return lipgloss.PlaceHorizontal(width, lipgloss.Center, clampWidth(s, width))
 }
 
 // wrapStyled renders raw text in style, word-wrapped to width, and returns it as
@@ -828,8 +904,14 @@ func fitLine(left, right string, width int) string {
 // beacon (and every status hue) survives under the cursor — selection and
 // attention are separate channels (DESIGN.md §5.3).
 func (m *DashboardModel) worktreeLine(w WorktreeView, selected bool, inner int) string {
-	// labels are ASCII and glyphs are width-1, so byte-format padding == colStatusW.
-	statusRaw := fmt.Sprintf("%s %-8s", w.Status.Glyph(), w.Status.Label())
+	// labels are ASCII and glyphs are width-1, so byte-format padding == colStatusW. A live
+	// working agent animates (motion = alive); the waiting beacon and a gone-quiet agent
+	// stay dead still, so stillness reads as "this one may want you" (DESIGN §5.1).
+	glyph := w.Status.Glyph()
+	if w.Status == StatusWorking && !w.Quiet {
+		glyph = workingGlyphFrame(StatusWorking, m.glyphFrame)
+	}
+	statusRaw := fmt.Sprintf("%s %-8s", glyph, w.Status.Label())
 	ageRaw := padCell(w.AgeLabel, colAgeW)
 	nameRaw := padCell(w.Name, colNameW)
 	branchRaw := padCell(w.Branch, colBranchW)
