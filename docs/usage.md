@@ -7,7 +7,9 @@
 ## Install
 
 ```bash
-go install github.com/JinmuGo/eme@latest
+brew install jinmugo/tap/eme                          # Homebrew (macOS / Linux)
+curl -fsSL https://eme.jinmu.me/install.sh | sh       # install script
+go install github.com/JinmuGo/eme/cmd/eme@latest      # from source
 ```
 
 ## Bind tmux

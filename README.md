@@ -19,10 +19,17 @@
 ## Install
 
 ```bash
-go install github.com/JinmuGo/eme@latest
+# Homebrew (macOS / Linux)
+brew install jinmugo/tap/eme
+
+# or the install script
+curl -fsSL https://eme.jinmu.me/install.sh | sh
+
+# or from source with Go
+go install github.com/JinmuGo/eme/cmd/eme@latest
 ```
 
-Make sure `$GOPATH/bin` is on your `PATH`.
+If you use `go install`, make sure `$GOPATH/bin` is on your `PATH`.
 
 ## Bind it to tmux
 
