@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#121317" />
+
+    <!-- Primary SEO -->
+    <title>eme — Mission control for your AI coding agents</title>
+    <meta name="title" content="eme — Mission control for your AI coding agents" />
+    <meta name="description" content="Run each AI coding agent in its own git worktree as a real tmux session, and see across every worktree which one is waiting for input, which is still working, and which is idle — all from the terminal." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://eme.jinmu.me/" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://eme.jinmu.me/" />
+    <meta property="og:title" content="eme — Mission control for your AI coding agents" />
+    <meta property="og:description" content="Run each AI coding agent in its own git worktree as a real tmux session, and see which one is waiting for you. eeny · meeny · miny · moe." />
+    <meta property="og:image" content="https://eme.jinmu.me/og-image.png" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://eme.jinmu.me/" />
+    <meta property="twitter:title" content="eme — Mission control for your AI coding agents" />
+    <meta property="twitter:description" content="Run each AI coding agent in its own git worktree as a real tmux session, and see which one is waiting for you." />
+    <meta property="twitter:image" content="https://eme.jinmu.me/og-image.png" />
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "eme",
+        "operatingSystem": "macOS, Linux",
+        "applicationCategory": "DeveloperApplication",
+        "offers": { "@type": "Offer", "price": "0.00", "priceCurrency": "USD" },
+        "description": "Mission control for your AI coding agents. Run each agent in its own git worktree as a real tmux session and see which one is waiting for input.",
+        "downloadUrl": "https://github.com/JinmuGo/eme/releases",
+        "license": "https://opensource.org/licenses/MIT"
+      }
+    </script>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@144,600,60,1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="wordmark" href="/">eme</a>
+      <nav class="nav">
+        <a id="stars" class="nav-link" href="https://github.com/JinmuGo/eme" target="_blank" rel="noopener">GitHub</a>
+        <a class="nav-link" href="https://github.com/JinmuGo/eme/releases" target="_blank" rel="noopener">Releases</a>
+      </nav>
+    </header>
+
+    <main>
+      <!-- Hero -->
+      <section class="hero">
+        <p class="eyeny">eeny &middot; meeny &middot; miny &middot; moe</p>
+        <h1 class="hero-title">Mission control for your<br /><span class="amber">AI coding agents.</span></h1>
+        <p class="hero-sub">
+          Run each agent in its own git worktree as a real tmux session — and see, across every
+          worktree, which one is <span class="s-wait">waiting</span> for you, which is still
+          <span class="s-work">working</span>, and which is <span class="s-idle">idle</span>.
+        </p>
+
+        <!-- Install switcher -->
+        <div class="switcher" role="tablist">
+          <button class="tab active" data-cmd="brew" role="tab">Homebrew</button>
+          <button class="tab" data-cmd="curl" role="tab">Script</button>
+          <button class="tab" data-cmd="go" role="tab">Go</button>
+        </div>
+        <div class="install">
+          <span class="prompt">$</span>
+          <code id="install-cmd">brew install jinmugo/tap/eme</code>
+          <button id="copy" class="copy" aria-label="Copy install command">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span class="copy-label">Copy</span>
+          </button>
+        </div>
+
+        <!-- CSS dashboard mock -->
+        <div class="term" aria-hidden="true">
+          <div class="term-chrome">
+            <span class="tc-dot"></span><span class="tc-dot"></span><span class="tc-dot"></span>
+            <span class="term-name">eme</span>
+          </div>
+          <div class="term-screen">
+            <div class="term-head">eme &middot; 4 worktrees &middot; <b class="s-wait">1 waiting</b></div>
+            <div class="wt selected">
+              <span class="glyph s-wait">&#9679;</span>
+              <span class="wt-name">feature-auth</span>
+              <span class="wt-agent">claude</span>
+              <span class="wt-state s-wait">waiting <span class="age">2m</span></span>
+            </div>
+            <div class="wt">
+              <span class="glyph s-work">&#9679;</span>
+              <span class="wt-name">refactor-api</span>
+              <span class="wt-agent">codex</span>
+              <span class="wt-state s-work">working</span>
+            </div>
+            <div class="wt">
+              <span class="glyph s-idle">&#9675;</span>
+              <span class="wt-name">docs-site</span>
+              <span class="wt-agent">opencode</span>
+              <span class="wt-state s-idle">idle</span>
+            </div>
+            <div class="wt">
+              <span class="glyph s-crash">&#10007;</span>
+              <span class="wt-name">flaky-test</span>
+              <span class="wt-agent">claude</span>
+              <span class="wt-state s-crash">crashed</span>
+            </div>
+            <div class="term-foot">
+              <b>n</b> new <span class="sep">·</span> <b>c</b> worktree <span class="sep">·</span>
+              <b>a</b> agent <span class="sep">·</span> <b>s</b> sort <span class="sep">·</span> <b>&#9166;</b> switch
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Features -->
+      <section class="features">
+        <div class="feature">
+          <h3>Mission control</h3>
+          <p>One dashboard shows every agent as <span class="s-idle">idle</span>, <span class="s-work">working</span>, or <span class="s-wait">waiting-for-input</span>. Jump straight to the one that needs you.</p>
+        </div>
+        <div class="feature">
+          <h3>Native to your tmux</h3>
+          <p>Agents run in your real tmux sessions and windows — copy-mode, popups, your own keybindings all work. Not a hidden tmux a TUI owns, not an Electron app.</p>
+        </div>
+        <div class="feature">
+          <h3>git worktree-native</h3>
+          <p>Each agent gets an isolated worktree and its own tmux window. <code>folder = project = session</code>, with no registration step.</p>
+        </div>
+        <div class="feature">
+          <h3>Stays out of your way</h3>
+          <p>No diff/merge/approval GUI. Review stays where it belongs — in your editor and in git.</p>
+        </div>
+      </section>
+
+      <!-- Shortcuts -->
+      <section class="shortcuts">
+        <h2 class="section-title">Dashboard keys</h2>
+        <div class="keys">
+          <div class="key-row"><span class="kbd">n</span><span class="key-desc">New project — fuzzy folder picker, creates <code>main</code></span></div>
+          <div class="key-row"><span class="kbd">c</span><span class="key-desc">Create a worktree (new branch + tmux window)</span></div>
+          <div class="key-row"><span class="kbd">a</span><span class="key-desc">Toggle the agent in the selected worktree</span></div>
+          <div class="key-row"><span class="kbd">A</span><span class="key-desc">Pick which agent to launch from the catalog</span></div>
+          <div class="key-row"><span class="kbd">s</span><span class="key-desc">Float the agents that need you to the top</span></div>
+          <div class="key-row"><span class="kbd">p</span><span class="key-desc">Live side preview of the selected agent</span></div>
+          <div class="key-row"><span class="kbd">&#9166;</span><span class="key-desc">Switch your tmux client to that worktree</span></div>
+          <div class="key-row"><span class="kbd">d</span><span class="key-desc">Kill a worktree (with confirmation)</span></div>
+        </div>
+      </section>
+
+      <!-- Requirements -->
+      <section class="reqs">
+        <p>Requires <b>tmux&nbsp;&ge;&nbsp;3.0</b>, <b>git&nbsp;&ge;&nbsp;2.30</b>, and an AI agent on your <code>PATH</code> (opencode, claude, codex, &hellip;).</p>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>Created by <a href="https://github.com/JinmuGo" target="_blank" rel="noopener">jinmugo</a> &middot; MIT</p>
+      <nav class="footer-links">
+        <a href="https://github.com/JinmuGo/eme" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/JinmuGo/eme/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="https://github.com/JinmuGo/eme/blob/main/docs/usage.md" target="_blank" rel="noopener">Docs</a>
+      </nav>
+    </footer>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
