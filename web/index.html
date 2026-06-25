@@ -11,44 +11,80 @@
 
     <!-- Primary SEO -->
     <title>eme — Mission control for your AI coding agents</title>
-    <meta name="title" content="eme — Mission control for your AI coding agents" />
-    <meta name="description" content="Run each AI coding agent in its own git worktree as a real tmux session, and see across every worktree which one is waiting for input, which is still working, and which is idle — all from the terminal." />
-    <meta name="robots" content="index, follow" />
+    <meta name="description" content="eme is a free, open-source terminal tool that runs each AI coding agent (Claude Code, Codex, Gemini, opencode) in its own git worktree as a real tmux session, and shows which agent is waiting for input, which is running, and which is idle — without leaving the terminal." />
+    <meta name="keywords" content="AI coding agents, agent dashboard, tmux, git worktree, terminal, TUI, Claude Code, Codex, opencode, Gemini CLI, parallel agents, mission control" />
+    <meta name="author" content="JinmuGo" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
     <link rel="canonical" href="https://eme.jinmu.me/" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="eme" />
     <meta property="og:url" content="https://eme.jinmu.me/" />
     <meta property="og:title" content="eme — Mission control for your AI coding agents" />
     <meta property="og:description" content="Run each AI coding agent in its own git worktree as a real tmux session, and see which one is waiting for you. eeny · meeny · miny · moe." />
     <meta property="og:image" content="https://eme.jinmu.me/og-image.png" />
+    <meta property="og:image:width" content="2400" />
+    <meta property="og:image:height" content="1260" />
+    <meta property="og:image:alt" content="eme — mission control for your AI coding agents" />
 
     <!-- Twitter -->
-    <meta property="twitter:card" content="summary_large_image" />
-    <meta property="twitter:url" content="https://eme.jinmu.me/" />
-    <meta property="twitter:title" content="eme — Mission control for your AI coding agents" />
-    <meta property="twitter:description" content="Run each AI coding agent in its own git worktree as a real tmux session, and see which one is waiting for you." />
-    <meta property="twitter:image" content="https://eme.jinmu.me/og-image.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="eme — Mission control for your AI coding agents" />
+    <meta name="twitter:description" content="Run each AI coding agent in its own git worktree as a real tmux session, and see which one is waiting for you." />
+    <meta name="twitter:image" content="https://eme.jinmu.me/og-image.png" />
+    <meta name="twitter:image:alt" content="eme — mission control for your AI coding agents" />
 
     <!-- Structured Data -->
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
-        "@type": "SoftwareApplication",
-        "name": "eme",
-        "operatingSystem": "macOS, Linux",
-        "applicationCategory": "DeveloperApplication",
-        "offers": { "@type": "Offer", "price": "0.00", "priceCurrency": "USD" },
-        "description": "Mission control for your AI coding agents. Run each agent in its own git worktree as a real tmux session and see which one is waiting for input.",
-        "downloadUrl": "https://github.com/JinmuGo/eme/releases",
-        "license": "https://opensource.org/licenses/MIT"
+        "@graph": [
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://eme.jinmu.me/#software",
+            "name": "eme",
+            "alternateName": "eme — mission control for AI coding agents",
+            "operatingSystem": "macOS, Linux",
+            "applicationCategory": "DeveloperApplication",
+            "softwareVersion": "0.1.0",
+            "description": "eme runs each AI coding agent in its own git worktree as a real tmux session, and shows across every worktree which agent is waiting for input, which is running, and which is idle.",
+            "url": "https://eme.jinmu.me/",
+            "downloadUrl": "https://github.com/JinmuGo/eme/releases",
+            "softwareHelp": "https://github.com/JinmuGo/eme/blob/main/docs/usage.md",
+            "license": "https://opensource.org/licenses/MIT",
+            "isAccessibleForFree": true,
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+            "author": { "@type": "Person", "name": "JinmuGo", "url": "https://github.com/JinmuGo" },
+            "codeRepository": "https://github.com/JinmuGo/eme"
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://eme.jinmu.me/#website",
+            "url": "https://eme.jinmu.me/",
+            "name": "eme",
+            "description": "Mission control for your AI coding agents.",
+            "publisher": { "@type": "Person", "name": "JinmuGo", "url": "https://github.com/JinmuGo" }
+          },
+          {
+            "@type": "FAQPage",
+            "@id": "https://eme.jinmu.me/#faq",
+            "mainEntity": [
+              { "@type": "Question", "name": "What is eme?", "acceptedAnswer": { "@type": "Answer", "text": "eme is a free, open-source (MIT) terminal tool that runs each AI coding agent in its own git worktree as a real tmux session, and shows across every worktree which agent is waiting for input, which is running, and which is idle." } },
+              { "@type": "Question", "name": "Which AI coding agents does eme support?", "acceptedAnswer": { "@type": "Answer", "text": "Any command-line agent on your PATH — including Claude Code, Codex, Gemini, and opencode. You can add or override agents in eme's config." } },
+              { "@type": "Question", "name": "How do I install eme?", "acceptedAnswer": { "@type": "Answer", "text": "Install with Homebrew (brew install jinmugo/tap/eme), the install script (curl -fsSL https://eme.jinmu.me/install.sh | sh), or Go (go install github.com/JinmuGo/eme/cmd/eme@latest). eme requires tmux 3.0+ and git 2.30+." } },
+              { "@type": "Question", "name": "What platforms does eme run on?", "acceptedAnswer": { "@type": "Answer", "text": "macOS and Linux. eme is tmux-native: each project maps to a tmux session and each git worktree to a tmux window." } },
+              { "@type": "Question", "name": "Is eme free and open source?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. eme is MIT-licensed and developed in the open at github.com/JinmuGo/eme." } }
+            ]
+          }
+        ]
       }
     </script>
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@144,600,60,1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Fraunces:opsz,wght,SOFT,WONK@144,600,60,1&display=swap" rel="stylesheet" />
   </head>
   <body>
     <header class="site-header">
@@ -167,6 +203,33 @@
       <!-- Requirements -->
       <section class="reqs">
         <p>Requires <b>tmux&nbsp;&ge;&nbsp;3.0</b>, <b>git&nbsp;&ge;&nbsp;2.30</b>, and an AI agent on your <code>PATH</code> (opencode, claude, codex, &hellip;).</p>
+      </section>
+
+      <!-- FAQ -->
+      <section class="faq">
+        <h2 class="section-title">FAQ</h2>
+        <div class="faq-list">
+          <div class="faq-item">
+            <h3>What is eme?</h3>
+            <p>eme is a free, open-source (MIT) terminal tool that runs each AI coding agent in its own git worktree as a real tmux session, and shows across every worktree which agent is <span class="s-wait">waiting</span> for input, which is <span class="s-work">running</span>, and which is <span class="s-idle">idle</span>.</p>
+          </div>
+          <div class="faq-item">
+            <h3>Which AI coding agents does eme support?</h3>
+            <p>Any command-line agent on your <code>PATH</code> — including Claude Code, Codex, Gemini, and opencode. You can add or override agents in eme's config.</p>
+          </div>
+          <div class="faq-item">
+            <h3>How do I install eme?</h3>
+            <p>Install with Homebrew (<code>brew install jinmugo/tap/eme</code>), the install script (<code>curl -fsSL https://eme.jinmu.me/install.sh | sh</code>), or Go (<code>go install github.com/JinmuGo/eme/cmd/eme@latest</code>). eme requires tmux 3.0+ and git 2.30+.</p>
+          </div>
+          <div class="faq-item">
+            <h3>What platforms does eme run on?</h3>
+            <p>macOS and Linux. eme is tmux-native: each project maps to a tmux session and each git worktree to a tmux window.</p>
+          </div>
+          <div class="faq-item">
+            <h3>Is eme free and open source?</h3>
+            <p>Yes. eme is MIT-licensed and developed in the open at <a href="https://github.com/JinmuGo/eme" target="_blank" rel="noopener">github.com/JinmuGo/eme</a>.</p>
+          </div>
+        </div>
       </section>
     </main>
 

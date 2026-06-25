@@ -1,0 +1,28 @@
+# eme
+
+> eme is a free, open-source (MIT) terminal tool that runs each AI coding agent in its own git worktree as a real tmux session, and shows — across every worktree — which agent is waiting for input, which is running, and which is idle. It is mission control for your AI coding agents.
+
+eme is for developers who run several AI coding agents in parallel (Claude Code, Codex, Gemini, opencode, and any other command-line agent on the PATH) and need to see, at a glance, which one needs them. Each project maps to a tmux session and each git worktree to a tmux window; agents run inside your real tmux, not a hidden one a TUI owns. eme stays out of the way — there is no diff/merge/approval GUI, so review stays in your editor and in git.
+
+## Install
+
+- Homebrew: `brew install jinmugo/tap/eme`
+- Install script: `curl -fsSL https://eme.jinmu.me/install.sh | sh`
+- Go: `go install github.com/JinmuGo/eme/cmd/eme@latest`
+
+## Key facts
+
+- License: MIT (open source).
+- Platforms: macOS and Linux.
+- Requirements: tmux >= 3.0, git >= 2.30, and an AI agent on your PATH.
+- Each worktree's agent shows one of: running, waiting (needs input), idle, exited, or crashed.
+- The dashboard tallies how many agents need you and lets you jump straight to them.
+- Bind it to a tmux key (e.g. `bind-key a display-popup -E -w 80% -h 80% eme`) to open the dashboard in a popup.
+
+## Links
+
+- Homepage: https://eme.jinmu.me
+- Source code: https://github.com/JinmuGo/eme
+- Documentation: https://github.com/JinmuGo/eme/blob/main/docs/usage.md
+- Releases: https://github.com/JinmuGo/eme/releases
+- Install script: https://eme.jinmu.me/install.sh
