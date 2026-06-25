@@ -1,0 +1,33 @@
+name: release
+
+on:
+  pull_request:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: ${{ github.event_name == 'pull_request' && 'release --snapshot --skip=publish --clean' || 'release --clean' }}
+        env:
+          # PAT with write access to BOTH JinmuGo/eme and JinmuGo/homebrew-tap,
+          # so GoReleaser can publish the release and push Formula/eme.rb to the tap.
+          GITHUB_TOKEN: ${{ secrets.TOKEN }}

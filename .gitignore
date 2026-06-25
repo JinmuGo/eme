@@ -1,6 +1,13 @@
 /eme
 *.exe
 
+# goreleaser build output
+/dist/
+
+# web (homepage) build output + deps
+/web/node_modules/
+/web/dist/
+
 # subagent-driven-development scratch
 .superpowers/
 

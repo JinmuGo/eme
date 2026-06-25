@@ -1,0 +1,92 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# Build + release pipeline for eme. Triggered by pushing a v* tag (see
+# .github/workflows/release.yml). Cross-compiles, publishes a GitHub release,
+# and updates the Homebrew formula in JinmuGo/homebrew-tap.
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    # eme is tmux + git native (Unix only); no Windows target.
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/JinmuGo/eme/internal/cmd.Version={{ .Version }}
+    main: ./cmd/eme
+
+archives:
+  - formats: [tar.gz]
+    # uname-compatible names: eme_Darwin_arm64.tar.gz, eme_Linux_x86_64.tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  github:
+    owner: JinmuGo
+    name: eme
+
+brews:
+  - name: eme
+    repository:
+      owner: JinmuGo
+      name: homebrew-tap
+    url_template: "https://github.com/JinmuGo/eme/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    commit_author:
+      name: JinmuGo Bot
+      email: hi@jinmugo.me
+    directory: Formula
+    homepage: "https://eme.jinmu.me"
+    description: "Mission control for your AI coding agents — run each in its own git worktree + tmux session"
+    license: "MIT"
+    dependencies:
+      - name: tmux
+      - name: git
+    test: |
+      system "#{bin}/eme", "--version"
+    install: |
+      bin.install "eme"
+
+nfpms:
+  - id: eme
+    package_name: eme
+    vendor: JinmuGo
+    homepage: https://eme.jinmu.me
+    maintainer: JinmuGo <hi@jinmugo.me>
+    description: "Mission control for your AI coding agents — run each in its own git worktree + tmux session"
+    license: MIT
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+    dependencies:
+      - tmux
+      - git
+    contents:
+      - src: ./LICENSE
+        dst: /usr/share/doc/eme/LICENSE
+        file_info:
+          mode: 0644
