@@ -7,8 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned
+
+- Full worktree-level agent status polling in the dashboard.
+
+## [0.1.0] - 2026-06-25
+
 ### Added
 
+- Foundational CLI: the `eme` dashboard opens in a tmux popup or standalone TUI;
+  `eme new` creates a project with a nested-bare repo and `main` worktree;
+  `eme new --worktree <session>` adds worktrees; flat `eme switch` / `eme kill` /
+  `eme agent` commands; `eme doctor` checks tmux, git, popup support, and agent
+  availability; `eme --version`. Built-in fuzzy folder picker and worktree-name
+  input, structured Elm-style error messages with suggested fixes, hybrid state
+  synchronization with live tmux and git state, atomic locked state-file writes,
+  and a runner interface for testable git/tmux shell-outs.
+- Distribution: prebuilt binaries (macOS/Linux · amd64/arm64) published on each
+  `v*` tag via GoReleaser, a Homebrew tap (`brew install jinmugo/tap/eme`), an
+  install script (`curl -fsSL https://eme.jinmu.me/install.sh | sh`), and a
+  landing page at https://eme.jinmu.me.
 - Agent catalog: `eme new` shows an agent picker (built-in claude, codex, gemini,
   opencode, plus any `[[agents]]` you add) listing what's installed on your PATH; your
   choice launches in `main` and becomes the project default. Press `a` on a worktree to
@@ -129,24 +147,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and leaving the terminal in raw/alt-screen state. The `eme new` folder picker and
   worktree-name prompt also use the alternate screen.
 
-### Planned
-
-- Full worktree-level agent status polling in the dashboard.
-- Prebuilt binaries and Homebrew formula.
-
-## [0.1.0] - 2026-06-19
-
-### Added
-
-- `eme` dashboard opens in a tmux popup or standalone TUI.
-- `eme new` creates a project with a nested bare repo and main worktree.
-- `eme new --worktree <session>` creates additional worktrees.
-- `eme switch` / `eme kill` / `eme agent` flat commands.
-- `eme doctor` checks tmux, git, popup support, and agent availability.
-- `eme --version` prints the current version.
-- Built-in fuzzy folder picker and worktree name input.
-- Structured Elm-style error messages with suggested fixes.
-- Hybrid state synchronization with live tmux and git state.
-- Atomic, locked state file writes.
-- Runner interface for testable git/tmux shell-outs.
-- Unit tests for session ids, state persistence, git commands, and name resolution.
+[Unreleased]: https://github.com/JinmuGo/eme/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/JinmuGo/eme/releases/tag/v0.1.0
