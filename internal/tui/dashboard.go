@@ -120,6 +120,11 @@ type DashboardModel struct {
 	// beacon never reads it, so it stays a static ●. Non-animated renders use the still ◐
 	// rest glyph (Glyph), so tests and a first paint read consistently (DESIGN §5.1).
 	glyphFrame int
+	// animating tracks whether the dedicated spinner ticker is running, so the data tick
+	// restarts it when a working agent appears without ever stacking a second ticker. The
+	// fast ticker self-suspends when nothing spins — an idle dashboard must not repaint on
+	// the animInterval loop (battery).
+	animating bool
 	width      int
 	height     int
 	notice          string
@@ -503,9 +508,46 @@ func (m *DashboardModel) tick() tea.Cmd {
 	return tea.Tick(refreshInterval, func(time.Time) tea.Msg { return tickMsg{} })
 }
 
-// Init implements tea.Model. It starts the auto-refresh ticker so the beacon lights
-// without a keypress.
-func (m *DashboardModel) Init() tea.Cmd { return m.tick() }
+// animTickMsg drives the spinner-only animation ticker, decoupled from the 2s data refresh
+// so the working spinner spins smoothly instead of stepping once per reload.
+type animTickMsg struct{}
+
+// animInterval is the spinner frame cadence. ~120ms gives the moon-arc cycle a calm ~0.7s
+// rotation. An animTick is a pure repaint (no status read) and only runs while a live
+// working agent is on screen.
+const animInterval = 120 * time.Millisecond
+
+// animTick schedules the next spinner frame.
+func (m *DashboardModel) animTick() tea.Cmd {
+	return tea.Tick(animInterval, func(time.Time) tea.Msg { return animTickMsg{} })
+}
+
+// hasAnimatingAgent reports whether any worktree is a live (non-quiet) working agent — the
+// only thing that spins. It gates the animation ticker so an idle, all-quiet, or EME_ASCII
+// dashboard never enters the fast repaint loop.
+func (m *DashboardModel) hasAnimatingAgent() bool {
+	if asciiGlyphs() {
+		return false
+	}
+	for _, s := range m.views {
+		for _, w := range s.Worktrees {
+			if w.Status == StatusWorking && !w.Quiet {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Init implements tea.Model. It starts the auto-refresh ticker so the beacon lights without
+// a keypress, and the spinner ticker when a working agent is already on screen.
+func (m *DashboardModel) Init() tea.Cmd {
+	if m.hasAnimatingAgent() {
+		m.animating = true
+		return tea.Batch(m.tick(), m.animTick())
+	}
+	return m.tick()
+}
 
 // Update implements tea.Model.
 func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -675,9 +717,20 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.refresh(msg.err, msg.output)
 	case tickMsg:
-		m.glyphFrame++ // advance the working spinner; the static ● beacon ignores it
 		m.tickReload()
-		return m, m.tick()
+		cmds := []tea.Cmd{m.tick()}
+		if !m.animating && m.hasAnimatingAgent() {
+			m.animating = true
+			cmds = append(cmds, m.animTick())
+		}
+		return m, tea.Batch(cmds...)
+	case animTickMsg:
+		m.glyphFrame++ // spin the working glyph; the static ● beacon ignores it
+		if m.hasAnimatingAgent() {
+			return m, m.animTick()
+		}
+		m.animating = false
+		return m, nil
 	}
 	return m, nil
 }
