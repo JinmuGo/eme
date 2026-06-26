@@ -1,20 +1,32 @@
-# Example eme configuration
+# Example eme configuration — ~/.config/eme/config.toml
+#
+# Every table and key below is OPTIONAL. eme runs with no config file at all;
+# the values shown are the built-in defaults, so uncomment a line only to change
+# it. Point eme at a different file with `eme --config <path>`.
 
 [agent]
+# The agent highlighted by default in the picker (eme new, or A on a worktree).
 command = "opencode"
 
-# eme ships a built-in catalog of agents (claude, codex, gemini, opencode) and
-# shows the ones installed on your PATH when you create a project (eme new) or
-# press A on a worktree. agent.command is the default highlighted in the picker.
-
-# Add or override catalog entries here. A matching name overrides the built-in
-# command; a new name is appended.
+# eme ships a built-in catalog (claude, codex, gemini, opencode) and shows the
+# ones found on your PATH. Add or override catalog entries here: a matching name
+# overrides that built-in's command; a new name is appended. You can also
+# override the agent per folder or per worktree from the dashboard (a / A) — the
+# global default above is used when nothing overrides it.
 # [[agents]]
 # name = "claude-resume"
 # command = "claude --resume"
 
-# You can override the agent per folder or per worktree from the dashboard.
-# Global default is used when no override is set.
+[picker]
+# How many directory levels deep the new-project folder picker scans.
+# max_depth = 3
+# Extra directories to scan, in addition to the auto-discovered ones ("~" expands).
+# roots = ["~/src"]
+
+[worktree]
+# Sibling directory that holds an adopted in-place repo's worktrees. {repo}
+# expands to the repo basename; the result must resolve to a sibling of the repo.
+# dir_template = "{repo}.worktrees"
 
 [clone]
 # Where `eme clone` places repos cloned from GitHub (via the gh CLI). If unset,
@@ -32,3 +44,16 @@ command = "opencode"
 # from a popup on a different server attaching instead of moving your client.
 # The EME_TMUX_SOCKET environment variable overrides this value.
 # socket = "eme"
+
+[status]
+# How long a hooked agent may sit in "working" before the dashboard dims it as
+# gone-quiet. A Go duration ("90s", "5m"); "0" or "0s" disables the hint.
+# quiet_after = "2m"
+
+[caffeinate]
+# Per-session keep-awake (macOS only). flags are passed to /usr/bin/caffeinate —
+# "-i" blocks idle system sleep while leaving the display free to sleep.
+# auto_grace_seconds keeps auto-mode asserting this long after the last "working"
+# sample, so brief gaps between agent turns don't drop sleep protection.
+# flags = "-i"
+# auto_grace_seconds = 60

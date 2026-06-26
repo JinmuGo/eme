@@ -116,23 +116,41 @@ quiet_after = "2m"   # dim a hooked agent that's been "working" this long; "0" d
 
 `~/.config/eme/config.toml`:
 
+Every key is optional; the values below are the built-in defaults — set only what you want to change. Override the file location with `eme --config <path>`.
+
 ```toml
 [agent]
-command = "opencode"   # default highlighted in the agent picker
+command = "opencode"          # default agent highlighted in the picker
 
-# Optional: add or override catalog entries.
-[[agents]]
-name = "claude-resume"
-command = "claude --resume"
+# [[agents]]                  # add/override catalog entries (a matching name overrides a builtin)
+# name = "claude-resume"
+# command = "claude --resume"
 
-# Where `eme clone` puts cloned repos. If unset, eme picks the first existing of
-# ~/Projects, ~/code, ~/src, ~/workspace, ~/dev, ~/Development (else ~/src).
-# Override per run with `eme clone --dir <path>` or `EME_CLONE_DIR`.
+[picker]
+max_depth = 3                 # how deep the new-project folder picker scans
+# roots = ["~/src"]           # extra dirs to scan, on top of the auto-discovered ones
+
+[worktree]
+dir_template = "{repo}.worktrees"   # sibling dir holding an adopted repo's worktrees
+
 [clone]
-dir = "~/Programming/new"
+# dir = "~/Projects"          # where `eme clone` puts repos; default: first existing of
+                              # ~/Projects, ~/code, ~/src, ~/workspace, ~/dev, ~/Development
+
+[tmux]
+# socket = "eme"              # pin all tmux ops to one server; default: your current server
+
+[status]
+quiet_after = "2m"            # dim a hooked agent stuck "working" this long; "0" disables
+
+[caffeinate]                  # keep-awake (macOS)
+flags = "-i"                  # caffeinate flags; -i blocks idle system sleep
+auto_grace_seconds = 60       # auto mode: stay awake this long after the last "working" sample
 ```
 
-You can override the agent per folder or per worktree from the dashboard.
+**Environment overrides:** `EME_THEME=light|dark`, `EME_BEACON_COLOR=<color>`, `EME_ASCII=1` (ASCII status glyphs for non-Unicode terminals), `EME_TMUX_SOCKET=<name>`, `EME_CLONE_DIR=<path>`.
+
+See [`examples/config.toml`](examples/config.toml) for a fully-annotated version. You can override the agent per folder or per worktree from the dashboard.
 
 When you run `eme new`, eme shows an agent picker (claude, codex, gemini, opencode, plus any `[[agents]]` you add) listing what's installed on your PATH; your choice launches in `main` and becomes the project default. Press `a` on a worktree to toggle its agent, or `A` to pick a different one.
 

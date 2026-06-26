@@ -103,6 +103,8 @@ You can override the agent per folder or per worktree from the dashboard.
 
 - `EME_TMUX_SOCKET=<name>` — pin all tmux operations to one dedicated server (`tmux -L <name>`); same as `[tmux] socket`.
 - `EME_THEME=light|dark` — force the color theme when eme can't detect the terminal background (e.g. inside some tmux popups).
+- `EME_BEACON_COLOR=<color>` — override the amber beacon hue (any value lipgloss accepts, e.g. `#e69f00` or `214`).
+- `EME_ASCII=1` — use ASCII status glyphs (`* o . x ·`) on terminals that can't render the Unicode dots.
 - `EME_CLONE_DIR=<path>` — where `eme clone` puts cloned repos; same as `[clone] dir` (the `--dir` flag overrides both).
 
 ## Dashboard keys
