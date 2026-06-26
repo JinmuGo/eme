@@ -627,6 +627,15 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.runChild("new", "--no-switch")
 			}
 			return m, m.openModal(m.makeFolderPicker(), &modalFlow{kind: flowNewProject})
+		case "g":
+			// Clone a GitHub repo: load the repo list (async, network-bound), then pick repo →
+			// agent, both as in-dashboard modals. Falls back to a child when unwired.
+			if !m.repoActionsWired() {
+				return m, m.runChild("clone", "--no-switch")
+			}
+			m.notice = ""
+			initCmd := m.openModal(NewLoadingModal("Loading your GitHub repos…"), &modalFlow{kind: flowClone})
+			return m, tea.Batch(initCmd, m.loadReposCmd())
 		case "c":
 			// Create a worktree in the session under the cursor (header or worktree).
 			// A plain (non-git) folder has no git worktrees, so gate the action here:
@@ -812,9 +821,9 @@ func (m *DashboardModel) View() string {
 	if n := m.unhookedWorking(); n > 0 && len(m.rows) > 0 {
 		bottom = append(bottom, wrapStyled(mutedStyle, fmt.Sprintf("%d un-hooked · eme hooks install for live status", n), inner)...)
 	}
-	help := "↑↓/jk move · 1-9 jump · ←→/hl fold · ↵ open · n new · d kill · ? more · q quit"
+	help := "↑↓/jk move · 1-9 jump · ←→/hl fold · ↵ open · n new · g clone · d kill · ? more · q quit"
 	if m.showHelp {
-		help = "↑↓/jk move · 1-9 jump · [ ] prev/next project · ←→/hl fold · ↵/o open · p preview · n new · c worktree · a agent · A pick · x clean · s sort · w wake · d kill · q quit · ?"
+		help = "↑↓/jk move · 1-9 jump · [ ] prev/next project · ←→/hl fold · ↵/o open · p preview · n new · g clone · c worktree · a agent · A pick · x clean · s sort · w wake · d kill · q quit · ?"
 	}
 	if len(m.rows) == 0 {
 		help = "n new · q quit" // first run: only two moves matter
@@ -1512,6 +1521,23 @@ func (m *DashboardModel) runChild(args ...string) tea.Cmd {
 	return tea.ExecProcess(exec.Command(binary, args...), func(err error) tea.Msg {
 		return actionFinishedMsg{err: err}
 	})
+}
+
+// reposLoadedMsg carries the result of the async GitHub repo fetch behind the clone loading
+// modal.
+type reposLoadedMsg struct {
+	repos []RepoItem
+	err   error
+}
+
+// loadReposCmd runs the injected repo fetch off the UI thread and reports the result as a
+// reposLoadedMsg.
+func (m *DashboardModel) loadReposCmd() tea.Cmd {
+	fetch := m.fetchRepos
+	return func() tea.Msg {
+		repos, err := fetch()
+		return reposLoadedMsg{repos: repos, err: err}
+	}
 }
 
 // runChildBackground runs `eme <args...>` to completion WITHOUT handing it the terminal, so

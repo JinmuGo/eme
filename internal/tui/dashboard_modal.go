@@ -101,6 +101,8 @@ func (m *DashboardModel) updateWithModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case actionFinishedMsg:
 		m.refresh(msg.err, msg.output)
 		return m, nil
+	case reposLoadedMsg:
+		return m.onReposLoaded(msg)
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		return m, m.updateModal(msg)
@@ -112,6 +114,25 @@ func (m *DashboardModel) updateWithModal(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *DashboardModel) closeModal() {
 	m.modal = nil
 	m.flow = nil
+}
+
+// onReposLoaded swaps the loading modal for the repo picker when the fetch returns, or closes
+// it with a notice on error. A result that arrives after the user cancelled (the loading modal
+// is gone) is dropped.
+func (m *DashboardModel) onReposLoaded(msg reposLoadedMsg) (tea.Model, tea.Cmd) {
+	if _, ok := m.modal.(*LoadingModal); !ok {
+		return m, nil // user cancelled before the load returned
+	}
+	if msg.err != nil {
+		m.closeModal()
+		m.notice = firstMeaningfulLine(msg.err.Error())
+		if m.notice == "" {
+			m.notice = "could not load GitHub repos"
+		}
+		return m, nil
+	}
+	m.modal = NewRepoPicker(msg.repos)
+	return m, m.sizeAndInit()
 }
 
 // updateModal forwards msg to the active dialog, then advances the flow when the dialog

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -20,6 +21,9 @@ func wireModals(m *DashboardModel) {
 	})
 	m.SetFolderPicker(func() *FolderPickerModel {
 		return NewFolderPicker([]string{"/code/alpha", "/code/beta"})
+	})
+	m.SetRepoFetcher(func() ([]RepoItem, error) {
+		return []RepoItem{{NameWithOwner: "octo/eme"}, {NameWithOwner: "octo/x"}}, nil
 	})
 }
 
@@ -353,5 +357,86 @@ func TestDashboard_AgentArgs(t *testing.T) {
 	m.cursor = 0 // header — no worktree selected
 	if _, ok := m.AgentArgs(false); ok {
 		t.Error("AgentArgs on a header should report ok=false")
+	}
+}
+
+// TestModalFlow_Clone walks `g`: loading modal → repo picker (after load) → agent picker →
+// background clone.
+func TestModalFlow_Clone(t *testing.T) {
+	m := sized(t)
+
+	_, cmd := m.Update(runeKey('g'))
+	if _, ok := m.modal.(*LoadingModal); !ok {
+		t.Fatalf("after g, modal = %T, want *LoadingModal", m.modal)
+	}
+	if m.flow == nil || m.flow.kind != flowClone {
+		t.Fatalf("flow = %+v, want flowClone", m.flow)
+	}
+	if cmd == nil {
+		t.Fatal("g must dispatch the repo-load cmd")
+	}
+
+	m.Update(reposLoadedMsg{repos: []RepoItem{{NameWithOwner: "octo/eme"}, {NameWithOwner: "octo/x"}}})
+	if _, ok := m.modal.(*RepoPickerModel); !ok {
+		t.Fatalf("after load, modal = %T, want *RepoPickerModel", m.modal)
+	}
+
+	m.Update(enter()) // pick the first repo, octo/eme
+	if _, ok := m.modal.(*AgentPickerModel); !ok {
+		t.Fatalf("after repo, modal = %T, want *AgentPickerModel", m.modal)
+	}
+	if m.flow.repo != "octo/eme" {
+		t.Fatalf("repo = %q, want octo/eme", m.flow.repo)
+	}
+	if got, want := m.flowArgs("claude"), cloneArgs("octo/eme", "claude"); !reflect.DeepEqual(got, want) {
+		t.Fatalf("pending args = %v, want %v", got, want)
+	}
+
+	_, cmd = m.Update(enter()) // choose claude
+	if m.modal != nil || m.flow != nil {
+		t.Fatalf("flow should tear down after the choice; modal=%v flow=%v", m.modal, m.flow)
+	}
+	if cmd == nil {
+		t.Fatal("choosing the agent must dispatch the background clone")
+	}
+}
+
+// TestModalFlow_CloneLoadError: a failed repo load closes the modal and shows a notice.
+func TestModalFlow_CloneLoadError(t *testing.T) {
+	m := sized(t)
+	m.Update(runeKey('g'))
+	m.Update(reposLoadedMsg{err: errors.New("gh: not authenticated")})
+	if m.modal != nil || m.flow != nil {
+		t.Fatalf("load error should tear down the modal; modal=%v flow=%v", m.modal, m.flow)
+	}
+	if m.notice == "" {
+		t.Error("load error should set a notice")
+	}
+}
+
+// TestModalFlow_CloneFallsBackWhenUnwired: without a fetcher/agent picker, `g` degrades to the
+// child process.
+func TestModalFlow_CloneFallsBackWhenUnwired(t *testing.T) {
+	m := NewDashboard(sampleViews(), nil) // unwired
+	_, cmd := m.Update(runeKey('g'))
+	if m.modal != nil {
+		t.Fatal("no modal should open without a fetcher/agent picker")
+	}
+	if cmd == nil {
+		t.Fatal("unwired g should fall back to a child process")
+	}
+}
+
+// TestModalFlow_CloneRepoCancelAborts: Esc on the repo picker creates nothing.
+func TestModalFlow_CloneRepoCancelAborts(t *testing.T) {
+	m := sized(t)
+	m.Update(runeKey('g'))
+	m.Update(reposLoadedMsg{repos: []RepoItem{{NameWithOwner: "octo/eme"}}})
+	_, cmd := m.Update(esc())
+	if m.modal != nil || m.flow != nil {
+		t.Fatalf("esc on repo picker must tear down; modal=%v flow=%v", m.modal, m.flow)
+	}
+	if cmd != nil {
+		t.Fatal("cancelling the repo pick must not dispatch a clone")
 	}
 }
