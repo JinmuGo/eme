@@ -19,7 +19,7 @@
   --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --display: var(--sans); /* readable web-standard sans for headings */
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --serif: "Fraunces", Georgia, serif; /* brand wordmark only */
+  --wordmark: "Fredoka", "Inter", sans-serif; /* brand wordmark — rounded, playful (not serif) */
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -61,11 +61,11 @@ code, .mono { font-family: var(--mono); }
   justify-content: space-between;
 }
 .wordmark {
-  font-family: var(--serif); /* brand wordmark stays Fraunces */
+  font-family: var(--wordmark); /* brand wordmark — Fredoka (rounded, playful) */
   font-weight: 600;
   font-size: 30px;
   color: var(--brand);
-  letter-spacing: -0.5px;
+  letter-spacing: -0.3px;
   line-height: 1;
 }
 .nav { display: flex; gap: 22px; }
