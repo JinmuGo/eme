@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"syscall"
@@ -8,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/JinmuGo/eme/internal/gh"
 	"github.com/JinmuGo/eme/internal/state"
 	"github.com/JinmuGo/eme/internal/tmux"
 	"github.com/JinmuGo/eme/internal/tui"
@@ -106,6 +108,26 @@ func runDashboard() error {
 			}
 		}
 		return tui.NewAgentPicker(items, def)
+	})
+	// The clone picker's repo list is network-bound (gh repo list), so the dashboard fetches it
+	// asynchronously behind a loading modal. cmd owns the gh call + the gh.Repo→tui.RepoItem
+	// mapping, keeping tui free of gh.
+	model.SetRepoFetcher(func() ([]tui.RepoItem, error) {
+		if !gh.Available() {
+			return nil, errGhNotFound()
+		}
+		if !gh.Authed(context.Background()) {
+			return nil, errGhNotAuthed()
+		}
+		repos, err := gh.RepoList(context.Background(), 200)
+		if err != nil {
+			return nil, err
+		}
+		items := make([]tui.RepoItem, len(repos))
+		for i, r := range repos {
+			items[i] = tui.RepoItem{NameWithOwner: r.NameWithOwner, Description: r.Description, Private: r.IsPrivate}
+		}
+		return items, nil
 	})
 	finalModel, err := tea.NewProgram(model, tea.WithAltScreen()).Run()
 	if err != nil {
