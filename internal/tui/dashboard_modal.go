@@ -22,6 +22,7 @@ const (
 	flowWorktree   flowKind = iota // c: name → agent → `new --worktree`
 	flowAgentOnly                  // A: agent → `agent --set`
 	flowNewProject                 // n: folder → agent → `new <folder>`
+	flowClone                      // g: repo → agent → `clone <repo>`
 )
 
 // modalFlow is the context a modal sequence accumulates before it fires its background
@@ -31,6 +32,7 @@ type modalFlow struct {
 	sessKey string // flowWorktree, flowAgentOnly: the session
 	wtName  string // flowAgentOnly: the worktree; flowWorktree: filled after name entry
 	folder  string // flowNewProject: filled after folder pick
+	repo    string // flowClone: filled after repo pick
 }
 
 // SetAgentPicker injects the factory that builds an agent picker for a worktree (the cmd
@@ -45,6 +47,19 @@ func (m *DashboardModel) SetAgentPicker(fn func(sessionID, worktreeName string) 
 // owns the folder scan).
 func (m *DashboardModel) SetFolderPicker(fn func() *FolderPickerModel) {
 	m.makeFolderPicker = fn
+}
+
+// SetRepoFetcher injects the function that loads the user's GitHub repos for the clone
+// picker. The cmd layer owns the gh call and the gh.Repo→RepoItem mapping, so tui stays free
+// of gh. nil leaves the `g` action falling back to a child process.
+func (m *DashboardModel) SetRepoFetcher(fn func() ([]RepoItem, error)) {
+	m.fetchRepos = fn
+}
+
+// repoActionsWired reports whether the clone flow can run in-dashboard: it needs the agent
+// picker (post-clone agent choice) and the repo fetcher.
+func (m *DashboardModel) repoActionsWired() bool {
+	return m.makeAgentPicker != nil && m.fetchRepos != nil
 }
 
 // modalsWired reports whether both picker factories are installed. When they are not (tests
@@ -131,6 +146,19 @@ func (m *DashboardModel) updateModal(msg tea.Msg) tea.Cmd {
 		if sel, ok := mod.Chosen(); ok {
 			return m.advanceFromAgent(sel)
 		}
+	case *LoadingModal:
+		if mod.Cancelled() {
+			m.closeModal()
+			return nil
+		}
+	case *RepoPickerModel:
+		if mod.Cancelled() {
+			m.closeModal()
+			return nil
+		}
+		if sel := mod.Selected(); sel.NameWithOwner != "" {
+			return m.advanceFromRepo(sel.NameWithOwner)
+		}
 	}
 	return cmd // still interacting — keep the dialog's own cmd (cursor blink), not tea.Quit
 }
@@ -152,6 +180,13 @@ func (m *DashboardModel) advanceFromName(name string) tea.Cmd {
 // advanceFromFolder moves the new-project flow from folder selection to the agent picker.
 func (m *DashboardModel) advanceFromFolder(folder string) tea.Cmd {
 	m.flow.folder = folder
+	m.modal = m.makeAgentPicker("", "") // brand-new project: no current agent
+	return m.sizeAndInit()
+}
+
+// advanceFromRepo moves the clone flow from repo selection to the agent picker.
+func (m *DashboardModel) advanceFromRepo(spec string) tea.Cmd {
+	m.flow.repo = spec
 	m.modal = m.makeAgentPicker("", "") // brand-new project: no current agent
 	return m.sizeAndInit()
 }
@@ -199,6 +234,8 @@ func (m *DashboardModel) flowArgs(agent string) []string {
 		return agentSetArgs(f.sessKey, f.wtName, agent)
 	case flowNewProject:
 		return newProjectArgs(f.folder, agent)
+	case flowClone:
+		return cloneArgs(f.repo, agent)
 	}
 	return nil
 }
@@ -220,4 +257,10 @@ func agentSetArgs(sessKey, wtName, agent string) []string {
 // at the picked folder with the chosen agent, no picker, client unchanged.
 func newProjectArgs(folder, agent string) []string {
 	return []string{"new", folder, "--no-switch", "--agent", agent}
+}
+
+// cloneArgs builds `eme clone <spec> --no-switch --agent <agent>` — clone the repo with the
+// chosen agent, no picker, the dashboard's client left in place.
+func cloneArgs(spec, agent string) []string {
+	return []string{"clone", spec, "--no-switch", "--agent", agent}
 }

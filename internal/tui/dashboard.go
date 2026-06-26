@@ -168,6 +168,9 @@ type DashboardModel struct {
 	flow             *modalFlow
 	makeAgentPicker  func(sessionID, worktreeName string) *AgentPickerModel
 	makeFolderPicker func() *FolderPickerModel
+	// fetchRepos loads the user's GitHub repos for the clone picker (network-bound; the cmd
+	// layer owns the gh call and the gh.Repo→RepoItem mapping). nil = unwired.
+	fetchRepos func() ([]RepoItem, error)
 }
 
 // NewDashboard creates a dashboard model. reload is called after each child

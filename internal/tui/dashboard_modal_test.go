@@ -76,6 +76,22 @@ func TestFlowArgs_MapsPerKind(t *testing.T) {
 	}
 }
 
+func TestCloneArgs(t *testing.T) {
+	got := cloneArgs("JinmuGo/eme", "claude")
+	want := []string{"clone", "JinmuGo/eme", "--no-switch", "--agent", "claude"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("cloneArgs = %v, want %v", got, want)
+	}
+}
+
+func TestFlowArgs_Clone(t *testing.T) {
+	m := NewDashboard(sampleViews(), nil)
+	m.flow = &modalFlow{kind: flowClone, repo: "octo/eme"}
+	if got, want := m.flowArgs("none"), cloneArgs("octo/eme", "none"); !reflect.DeepEqual(got, want) {
+		t.Errorf("clone flowArgs = %v, want %v", got, want)
+	}
+}
+
 // TestModalFlow_WorktreeCreate walks `c`: name input → agent picker → background create. The
 // cursor rests on the myapp header, so the flow targets session myapp.
 func TestModalFlow_WorktreeCreate(t *testing.T) {
