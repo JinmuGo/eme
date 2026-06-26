@@ -72,6 +72,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&runner.Verbose, "verbose", false, "print external commands to stderr")
 
 	rootCmd.AddCommand(newCmd)
+	rootCmd.AddCommand(cloneCmd)
 	rootCmd.AddCommand(switchCmd)
 	rootCmd.AddCommand(killCmd)
 	rootCmd.AddCommand(cleanCmd)
