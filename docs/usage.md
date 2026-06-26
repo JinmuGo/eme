@@ -37,6 +37,7 @@ for the binding and [`examples/config.toml`](../examples/config.toml) for a full
 eme                                  # dashboard
 eme new [folder]                     # create project + main worktree
 eme new --worktree <session> [name]  # create a worktree in an existing session
+eme clone [owner/repo | url]         # clone a GitHub repo (gh) → project + main worktree
 eme switch <session> [worktree]      # switch window
 eme kill <session> [worktree] --force  # remove a worktree, or a whole session
 eme clean <session> [worktree]       # revive a crashed/exited pane back to idle
@@ -57,6 +58,8 @@ eme --version                        # print version
 - `--config <path>` / `--state <path>` — global: override the config / state file locations.
 - `eme new --agent <cmd>` — launch a specific agent non-interactively (`none` for a bare shell), skipping the picker.
 - `eme new --convert <clone>` — losslessly restructure an existing normal clone into eme's nested-bare layout (keeps a backup; repos with submodules are refused — adopt them in place instead).
+- `eme clone --dir <path>` — clone into `<path>/<repo>` instead of the configured clone dir.
+- `eme clone --agent <cmd>` / `--no-switch` / `--dry-run` — same semantics as on `eme new`.
 - `eme agent --set <cmd>` — set and launch a specific agent for the worktree without the picker.
 - `eme kill --force-unpushed` — also delete a nested-bare project whose history is on no remote (implies `--force`).
 
@@ -86,6 +89,10 @@ quiet_after = "2m"          # dim a hooked agent "working" longer than this; "0"
 # max_depth = 4            # how deep the new-project folder picker scans
 # roots = ["~/src"]        # extra directories to scan for projects
 
+[clone]
+# dir = "~/Programming/new"  # where `eme clone` puts cloned repos; default: first existing
+                             # of ~/Projects, ~/code, ~/src, ~/workspace, ~/dev, ~/Development (else ~/src)
+
 [worktree]
 # dir_template = "{repo}.worktrees"  # where worktrees for an adopted in-place clone are created
 ```
@@ -96,6 +103,7 @@ You can override the agent per folder or per worktree from the dashboard.
 
 - `EME_TMUX_SOCKET=<name>` — pin all tmux operations to one dedicated server (`tmux -L <name>`); same as `[tmux] socket`.
 - `EME_THEME=light|dark` — force the color theme when eme can't detect the terminal background (e.g. inside some tmux popups).
+- `EME_CLONE_DIR=<path>` — where `eme clone` puts cloned repos; same as `[clone] dir` (the `--dir` flag overrides both).
 
 ## Dashboard keys
 
@@ -199,6 +207,32 @@ For a **new, empty** folder, `eme` creates a nested bare repository:
 If you point `eme new` at a folder that already contains a git repo, it is
 adopted in place (the clone is the `main` worktree; new worktrees go to a sibling
 `<repo>.worktrees/`).
+
+### Cloning from GitHub (`eme clone`)
+
+`eme clone` fetches a GitHub repo with the [gh CLI](https://cli.github.com) and
+builds the **same nested-bare layout** as a new project, seeded from the remote:
+
+```text
+eme clone                 # fuzzy-pick from your GitHub repos (gh repo list)
+eme clone JinmuGo/eme     # OWNER/REPO
+eme clone https://github.com/JinmuGo/eme   # or a URL (https / ssh)
+eme clone eme             # bare name → your own login (gh default)
+```
+
+The repo lands at `<clone-dir>/<repo>/` with `.bare/` + a `main/` worktree
+checked out to the remote's default branch (`main`, `master`, …), then eme creates
+the tmux session, onboards your agent, and switches in — exactly like `eme new`.
+
+**Clone directory** is resolved in order: `--dir` flag → `EME_CLONE_DIR` →
+`[clone] dir` in config → the first existing of `~/Projects`, `~/code`, `~/src`,
+`~/workspace`, `~/dev`, `~/Development` → `~/src`. The clone dir is also scanned by
+the `eme new` folder picker, so cloned repos are findable there later.
+
+`eme clone` requires `gh` installed and authenticated (`gh auth login`); core eme
+works without it. Run `eme doctor` to see gh status. Cloning into an existing
+**registered** project just switches to it; a non-empty unregistered directory is
+never overwritten.
 
 ### Plain (non-git) folders
 

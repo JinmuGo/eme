@@ -1,13 +1,26 @@
 package cmd
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/muesli/termenv"
 
+	"github.com/JinmuGo/eme/internal/gh"
 	"github.com/JinmuGo/eme/internal/git"
 )
+
+func TestCheckGh(t *testing.T) {
+	prevLook := gh.LookPath
+	prevRunner := gh.Runner
+	t.Cleanup(func() { gh.LookPath = prevLook; gh.Runner = prevRunner })
+
+	gh.LookPath = func(string) (string, error) { return "", errors.New("missing") }
+	if ok, msg := checkGh(); ok || !strings.Contains(msg, "not installed") {
+		t.Errorf("missing gh: ok=%v msg=%q", ok, msg)
+	}
+}
 
 func TestColorProfileMessage(t *testing.T) {
 	if msg := colorProfileMessage(termenv.TrueColor, true); !strings.Contains(msg, "truecolor") {

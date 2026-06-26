@@ -168,6 +168,11 @@ func scanFolders() ([]string, error) {
 	for _, r := range extraRoots {
 		roots = append(roots, expandTilde(r, home))
 	}
+	// Include the clone directory so `eme new` can find repos pulled by `eme clone`.
+	// resolveCloneDir is pure (no directory creation), so scanning has no side effects.
+	if cloneDir, err := resolveCloneDir(); err == nil {
+		roots = append(roots, cloneDir)
+	}
 
 	return collectFolders(roots, maxDepth), nil
 }

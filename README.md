@@ -80,6 +80,7 @@ is enhancement only. The amber `●` beacon for *waiting* agents is a fast-follo
 ```text
 eme                    # dashboard
 eme new                # fuzzy folder picker → new project + main worktree
+eme clone [owner/repo] # clone a GitHub repo (gh) → new project + main worktree
 eme switch <id>        # switch to session/window
 eme kill <id> --force  # remove worktree + kill window (--force required)
 eme clean <id>         # reset a crashed/exited worktree's pane to idle
@@ -123,6 +124,12 @@ command = "opencode"   # default highlighted in the agent picker
 [[agents]]
 name = "claude-resume"
 command = "claude --resume"
+
+# Where `eme clone` puts cloned repos. If unset, eme picks the first existing of
+# ~/Projects, ~/code, ~/src, ~/workspace, ~/dev, ~/Development (else ~/src).
+# Override per run with `eme clone --dir <path>` or `EME_CLONE_DIR`.
+[clone]
+dir = "~/Programming/new"
 ```
 
 You can override the agent per folder or per worktree from the dashboard.
@@ -135,6 +142,7 @@ When you run `eme new`, eme shows an agent picker (claude, codex, gemini, openco
 - git >= 2.30
 - A terminal that supports tmux popups
 - An AI agent on your PATH (opencode, claude, codex, etc.)
+- [gh](https://cli.github.com) (GitHub CLI), authenticated — only for `eme clone`
 
 ## Why eme?
 

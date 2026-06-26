@@ -360,6 +360,51 @@ func CurrentBranch(dir string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
+// SetFetchRefspec points a bare clone's origin fetch refspec at refs/remotes so
+// future fetches populate remote-tracking refs instead of overwriting the local
+// refs/heads/* that back worktrees.
+func SetFetchRefspec(bareDir string) error {
+	_, _, err := Run(context.Background(), bareDir, "config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")
+	return err
+}
+
+// Fetch runs `git fetch origin` in dir.
+func Fetch(dir string) error {
+	_, _, err := Run(context.Background(), dir, "fetch", "origin")
+	return err
+}
+
+// DefaultBranch returns the branch HEAD points at in a (bare) repo, e.g. "main".
+func DefaultBranch(dir string) (string, error) {
+	out, _, err := Run(context.Background(), dir, "symbolic-ref", "--short", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// SetUpstream sets branch's upstream to upstream (e.g. "origin/main") in worktreeDir.
+func SetUpstream(worktreeDir, branch, upstream string) error {
+	_, _, err := Run(context.Background(), worktreeDir, "branch", "--set-upstream-to="+upstream, branch)
+	return err
+}
+
+// ListLocalBranches returns the local branch short names in dir (a bare repo's
+// refs/heads/*). Returns an empty slice for a repo with no commits/branches.
+func ListLocalBranches(dir string) ([]string, error) {
+	out, _, err := Run(context.Background(), dir, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if b := strings.TrimSpace(line); b != "" {
+			names = append(names, b)
+		}
+	}
+	return names, nil
+}
+
 // Run executes a git command in dir with args using the configured Runner.
 func Run(ctx context.Context, dir string, args ...string) (string, string, error) {
 	allArgs := append([]string{"-C", dir}, args...)

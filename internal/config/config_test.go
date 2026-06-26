@@ -7,6 +7,21 @@ import (
 	"time"
 )
 
+func TestLoadCloneDir(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte("[clone]\ndir = \"~/Programming/new\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Clone.Dir != "~/Programming/new" {
+		t.Errorf("Clone.Dir = %q, want %q", cfg.Clone.Dir, "~/Programming/new")
+	}
+}
+
 func TestCatalog_IncludesBuiltins(t *testing.T) {
 	c := Default() // Agent.Command == "opencode"
 	got := c.Catalog()

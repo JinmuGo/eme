@@ -32,6 +32,8 @@ const (
 	CodeParentRepo            = "parent_repo"
 	CodeInProgressOp          = "in_progress_op"
 	CodeUnpushedHistory       = "unpushed_history"
+	CodeGhNotFound            = "gh_not_found"
+	CodeGhNotAuthed           = "gh_not_authed"
 )
 
 // EmeError is a structured error with a problem, cause, and suggested fix.

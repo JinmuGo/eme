@@ -11,6 +11,7 @@ import (
 
 	"github.com/JinmuGo/eme/internal/config"
 	"github.com/JinmuGo/eme/internal/errors"
+	"github.com/JinmuGo/eme/internal/gh"
 	"github.com/JinmuGo/eme/internal/git"
 	"github.com/JinmuGo/eme/internal/runner"
 	"github.com/JinmuGo/eme/internal/state"
@@ -116,10 +117,31 @@ func runDoctor() error {
 			"Fix the failed checks above and run `eme doctor` again.")
 	}
 
+	// gh is informational: required for `eme clone`, optional for core eme, so a
+	// missing/unauthed gh never fails doctor.
+	ghOK, ghMsg := checkGh()
+	ghStatus := "info"
+	if !ghOK {
+		ghStatus = "warn"
+	}
+	fmt.Printf("[%s] gh CLI: %s\n", ghStatus, ghMsg)
+
 	// Registered-project audit: non-fatal, additive.
 	runRegisteredProjectAudit()
 
 	return nil
+}
+
+// checkGh reports gh availability/auth. It is informational: eme clone needs gh,
+// but core eme does not, so a missing gh never fails `eme doctor`.
+func checkGh() (bool, string) {
+	if !gh.Available() {
+		return false, "not installed (needed for `eme clone`; see https://cli.github.com)"
+	}
+	if !gh.Authed(context.Background()) {
+		return false, "installed but not authenticated (run `gh auth login` for `eme clone`)"
+	}
+	return true, "installed and authenticated"
 }
 
 // runRegisteredProjectAudit loads the persisted state and checks each in-place

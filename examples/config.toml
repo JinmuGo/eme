@@ -16,6 +16,13 @@ command = "opencode"
 # You can override the agent per folder or per worktree from the dashboard.
 # Global default is used when no override is set.
 
+[clone]
+# Where `eme clone` places repos cloned from GitHub (via the gh CLI). If unset,
+# eme picks the first existing of ~/Projects, ~/code, ~/src, ~/workspace, ~/dev,
+# ~/Development (falling back to ~/src). Override per run with
+# `eme clone --dir <path>` or the EME_CLONE_DIR environment variable.
+# dir = "~/Programming/new"
+
 [tmux]
 # By default eme is native to your tmux: it uses whatever server you are
 # currently attached to, so switching to a worktree moves your real client and
