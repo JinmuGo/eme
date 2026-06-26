@@ -1148,3 +1148,50 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
+
+---
+
+## Web frontend (homepage) — build dependencies, fonts, and assets
+
+The `web/` directory is the project's marketing homepage (https://eme.jinmu.me), built with [Vite](https://vitejs.dev). **None of the npm packages below are linked into, or shipped as part of, the `eme` tool binary.** They are build-time-only `devDependencies` — every entry is `"dev": true` in `web/package-lock.json`. The deployed site (`web/dist/`) contains only the project's own first-party HTML/CSS/JS; the only third-party code that reaches the bundle is Vite's small MIT-licensed module-preload polyfill. They are disclosed here in full for completeness.
+
+### npm packages (`web/package-lock.json`, lockfileVersion 3 — 63 packages, all devDependencies)
+
+| Package | Version | License |
+|---|---|---|
+| `vite` | 6.4.3 | MIT |
+| `esbuild` | 0.25.12 | MIT |
+| `@esbuild/*` (26 platform-specific binaries) | 0.25.12 | MIT |
+| `rollup` | 4.62.2 | MIT |
+| `@rollup/rollup-*` (25 platform-specific binaries) | 4.62.2 | MIT |
+| `postcss` | 8.5.15 | MIT |
+| `nanoid` | 3.3.15 | MIT |
+| `picomatch` | 4.0.4 | MIT |
+| `picocolors` | 1.1.1 | ISC |
+| `fdir` | 6.5.0 | MIT |
+| `fsevents` | 2.3.3 | MIT |
+| `tinyglobby` | 0.2.17 | MIT |
+| `source-map-js` | 1.2.1 | BSD-3-Clause |
+| `@types/estree` | 1.0.9 | MIT |
+
+All are OSI-approved permissive licenses (MIT, ISC, BSD-3-Clause). No copyleft (GPL/LGPL/AGPL/MPL) and no non-commercial restrictions.
+
+### Web fonts (loaded at runtime from Google Fonts; not redistributed in this repo)
+
+The homepage loads three typefaces from the Google Fonts CDN (`web/index.html`). No font files are bundled or redistributed in this repository.
+
+| Font | Source | License |
+|---|---|---|
+| Inter | https://fonts.google.com/specimen/Inter | SIL Open Font License 1.1 |
+| JetBrains Mono | https://fonts.google.com/specimen/JetBrains+Mono | SIL Open Font License 1.1 |
+| Fredoka | https://fonts.google.com/specimen/Fredoka | SIL Open Font License 1.1 |
+
+The brand wordmark/logo SVGs under `docs/brand/` are outlined from **Fraunces** (SIL OFL 1.1) — see [`docs/brand/README.md`](docs/brand/README.md).
+
+### Icons
+
+The clipboard "copy" and "check" glyphs in `web/index.html` and `web/src/main.js` are from **Feather Icons** (https://github.com/feathericons/feather) — MIT License.
+
+### Adapted approach
+
+The Claude Code hook event/matcher mapping in `internal/cmd/hooks.go` was adapted from **craftzdog/tmux-claude-session-manager** (https://github.com/craftzdog/tmux-claude-session-manager) — MIT License.

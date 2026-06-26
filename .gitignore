@@ -11,6 +11,10 @@
 # subagent-driven-development scratch
 .superpowers/
 
+# internal planning/strategy docs — local-only, never commit (see CLAUDE.md)
+/DESIGN.md
+/UX-STRATEGY.md
+
 # local docs — keep most local, but publish usage.md + ADRs + the brand kit
 /docs/*
 !/docs/usage.md
@@ -22,3 +26,5 @@ docs/brand/.build/
 
 # macOS
 .DS_Store
+
+open-source.pdf
