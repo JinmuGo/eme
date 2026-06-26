@@ -719,6 +719,9 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		m.tickReload()
 		cmds := []tea.Cmd{m.tick()}
+		// The !m.animating guard is the only thing stopping a second animTick chain from being
+		// stacked — the suite can't assert this (tea.Cmd is opaque), so m.animating is the single
+		// source of truth for "a spinner ticker is already alive". Don't drop it.
 		if !m.animating && m.hasAnimatingAgent() {
 			m.animating = true
 			cmds = append(cmds, m.animTick())
