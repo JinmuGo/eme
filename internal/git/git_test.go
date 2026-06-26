@@ -53,6 +53,20 @@ func TestSetUpstream(t *testing.T) {
 	}
 }
 
+func TestListLocalBranches(t *testing.T) {
+	mock := runner.NewMock()
+	mock.Set("git", []string{"-C", "/r/.bare", "for-each-ref", "--format=%(refname:short)", "refs/heads/"}, "main\ndevelop\n", "", nil)
+	Runner = mock
+	defer func() { Runner = runner.Default }()
+	got, err := ListLocalBranches("/r/.bare")
+	if err != nil {
+		t.Fatalf("ListLocalBranches: %v", err)
+	}
+	if len(got) != 2 || got[0] != "main" || got[1] != "develop" {
+		t.Errorf("ListLocalBranches = %v, want [main develop]", got)
+	}
+}
+
 func TestWorktreeAdd_NewBranch(t *testing.T) {
 	mock := runner.NewMock()
 	mock.Set("git", []string{"-C", "/tmp/foo/main", "worktree", "add", "-b", "feature", "/tmp/foo/feature"}, "", "", nil)

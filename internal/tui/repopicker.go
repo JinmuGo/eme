@@ -27,7 +27,6 @@ type RepoPickerModel struct {
 	height    int
 	cancelled bool
 	selected  RepoItem
-	chosen    bool
 	input     textinput.Model
 }
 
@@ -60,7 +59,6 @@ func (m *RepoPickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyEnter:
 			if m.cursor < len(m.filtered) {
 				m.selected = m.filtered[m.cursor]
-				m.chosen = true
 				return m, tea.Quit
 			}
 		case tea.KeyUp:
@@ -78,9 +76,10 @@ func (m *RepoPickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.input.Width = msg.Width - 4
-	case error:
-		return m, tea.Quit
 	}
+	// A non-fatal error message (e.g. a paste error) falls through to textinput,
+	// which handles it without quitting — so it never collapses into an empty
+	// selection that the caller would misread as a chosen repo.
 	m.input, cmd = m.input.Update(msg)
 	m.updateFilter()
 	return m, cmd

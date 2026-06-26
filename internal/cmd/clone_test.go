@@ -64,8 +64,13 @@ func TestCloneBareLayoutSequenceAndCleanup(t *testing.T) {
 	gmock.Set("git", []string{"-C", bare, "config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"}, "", "", nil)
 	gmock.Set("git", []string{"-C", bare, "fetch", "origin"}, "", "", nil)
 	gmock.Set("git", []string{"-C", bare, "symbolic-ref", "--short", "HEAD"}, "main\n", "", nil)
+	// empty-repo guard: default branch exists in the bare clone.
+	gmock.Set("git", []string{"-C", bare, "show-ref", "--verify", "--quiet", "refs/heads/main"}, "", "", nil)
 	gmock.Set("git", []string{"-C", bare, "worktree", "add", mainWt, "main"}, "", "", nil)
 	gmock.Set("git", []string{"-C", mainWt, "branch", "--set-upstream-to=origin/main", "main"}, "", "", nil)
+	// prune: clone --bare left local heads main+develop; develop must be deleted.
+	gmock.Set("git", []string{"-C", bare, "for-each-ref", "--format=%(refname:short)", "refs/heads/"}, "main\ndevelop\n", "", nil)
+	gmock.Set("git", []string{"-C", bare, "branch", "-D", "develop"}, "", "", nil)
 	prevG := git.Runner
 	git.Runner = gmock
 	t.Cleanup(func() { git.Runner = prevG })
