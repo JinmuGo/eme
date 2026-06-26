@@ -18,6 +18,7 @@ type Config struct {
 	Agent      Agent       `toml:"agent"`
 	Picker     Picker      `toml:"picker"`
 	Worktree   Worktree    `toml:"worktree"`
+	Clone      Clone       `toml:"clone"`
 	Tmux       Tmux        `toml:"tmux"`
 	Status     Status      `toml:"status"`
 	Caffeinate Caffeinate  `toml:"caffeinate"`
@@ -164,6 +165,15 @@ type Picker struct {
 	// Roots are extra directories to scan in addition to the auto-discovered
 	// ones. A leading "~" is expanded to the user's home directory.
 	Roots []string `toml:"roots"`
+}
+
+// Clone configures where `eme clone` places freshly cloned repos. It maps to the
+// [clone] table.
+type Clone struct {
+	// Dir is the directory cloned repos are created under. A leading "~" is
+	// expanded to the user's home directory at use-site. Empty means "auto"
+	// (resolved at runtime — see cmd.resolveCloneDir).
+	Dir string `toml:"dir"`
 }
 
 // Worktree configures where in-place worktrees are created.
