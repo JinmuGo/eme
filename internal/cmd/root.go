@@ -7,13 +7,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/JinmuGo/eme/internal/config"
-	"github.com/JinmuGo/eme/internal/errors"
-	"github.com/JinmuGo/eme/internal/reconcile"
-	"github.com/JinmuGo/eme/internal/runner"
-	"github.com/JinmuGo/eme/internal/state"
-	"github.com/JinmuGo/eme/internal/tmux"
-	"github.com/JinmuGo/eme/internal/tui/theme"
+	"github.com/alderwork/eme/internal/config"
+	"github.com/alderwork/eme/internal/errors"
+	"github.com/alderwork/eme/internal/reconcile"
+	"github.com/alderwork/eme/internal/runner"
+	"github.com/alderwork/eme/internal/state"
+	"github.com/alderwork/eme/internal/tmux"
+	"github.com/alderwork/eme/internal/tui/theme"
 )
 
 var (

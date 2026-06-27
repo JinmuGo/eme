@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JinmuGo/eme/internal/state"
+	"github.com/alderwork/eme/internal/state"
 )
 
 func TestForget_RemovesFromStateOnly(t *testing.T) {

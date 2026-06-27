@@ -1,6 +1,6 @@
 # Third-Party Licenses
 
-`eme` (`github.com/JinmuGo/eme`) is licensed under the MIT License — see [`LICENSE`](LICENSE).
+`eme` (`github.com/alderwork/eme`) is licensed under the MIT License — see [`LICENSE`](LICENSE).
 
 This file discloses the source and license of every open-source Go module `eme` depends on, in fulfillment of the requirement to disclose all used libraries and frameworks. Entries and license texts were collected from the local Go module cache on 2026-06-21.
 

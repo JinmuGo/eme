@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JinmuGo/eme/internal/git"
-	"github.com/JinmuGo/eme/internal/state"
-	"github.com/JinmuGo/eme/internal/tmux"
-	"github.com/JinmuGo/eme/internal/tui"
+	"github.com/alderwork/eme/internal/git"
+	"github.com/alderwork/eme/internal/state"
+	"github.com/alderwork/eme/internal/tmux"
+	"github.com/alderwork/eme/internal/tui"
 )
 
 // buildSessionViews maps state into render-ready dashboard views with the FULL

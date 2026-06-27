@@ -5,11 +5,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JinmuGo/eme/internal/config"
-	"github.com/JinmuGo/eme/internal/errors"
-	"github.com/JinmuGo/eme/internal/runner"
-	"github.com/JinmuGo/eme/internal/state"
-	"github.com/JinmuGo/eme/internal/tui"
+	"github.com/alderwork/eme/internal/config"
+	"github.com/alderwork/eme/internal/errors"
+	"github.com/alderwork/eme/internal/runner"
+	"github.com/alderwork/eme/internal/state"
+	"github.com/alderwork/eme/internal/tui"
 )
 
 // stubWhich makes both the runner `which <bin>` and the lookPath agent resolver

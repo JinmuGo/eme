@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JinmuGo/eme/internal/git"
-	"github.com/JinmuGo/eme/internal/runner"
-	"github.com/JinmuGo/eme/internal/state"
-	"github.com/JinmuGo/eme/internal/tmux"
+	"github.com/alderwork/eme/internal/git"
+	"github.com/alderwork/eme/internal/runner"
+	"github.com/alderwork/eme/internal/state"
+	"github.com/alderwork/eme/internal/tmux"
 )
 
 // TestState_UnreachableServerDoesNotPrune guards the data-loss fix: when the

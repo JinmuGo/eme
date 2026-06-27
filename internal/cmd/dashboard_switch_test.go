@@ -7,7 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/JinmuGo/eme/internal/tui"
+	"github.com/alderwork/eme/internal/tui"
 )
 
 // captureExec swaps execReplace for one that records its argv instead of

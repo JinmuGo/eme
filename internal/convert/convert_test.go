@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JinmuGo/eme/internal/errors"
-	"github.com/JinmuGo/eme/internal/git"
-	"github.com/JinmuGo/eme/internal/runner"
+	"github.com/alderwork/eme/internal/errors"
+	"github.com/alderwork/eme/internal/git"
+	"github.com/alderwork/eme/internal/runner"
 )
 
 func TestConvert_StashNotImplemented(t *testing.T) {

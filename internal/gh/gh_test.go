@@ -5,14 +5,14 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/JinmuGo/eme/internal/runner"
+	"github.com/alderwork/eme/internal/runner"
 )
 
 func TestRepoListArgsAndSort(t *testing.T) {
 	mock := runner.NewMock()
 	mock.Set("gh", []string{"repo", "list", "--limit", "200", "--json", "nameWithOwner,description,isPrivate,updatedAt"},
 		`[{"nameWithOwner":"JinmuGo/old","description":"o","isPrivate":false,"updatedAt":"2024-01-01T00:00:00Z"},`+
-			`{"nameWithOwner":"JinmuGo/eme","description":"new","isPrivate":true,"updatedAt":"2026-06-01T00:00:00Z"}]`,
+			`{"nameWithOwner":"alderwork/eme","description":"new","isPrivate":true,"updatedAt":"2026-06-01T00:00:00Z"}]`,
 		"", nil)
 	Runner = mock
 	defer func() { Runner = runner.Default }()
@@ -21,7 +21,7 @@ func TestRepoListArgsAndSort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RepoList: %v", err)
 	}
-	if len(repos) != 2 || repos[0].NameWithOwner != "JinmuGo/eme" {
+	if len(repos) != 2 || repos[0].NameWithOwner != "alderwork/eme" {
 		t.Fatalf("want recently-updated first, got %+v", repos)
 	}
 	if !repos[0].IsPrivate || repos[0].Description != "new" {
@@ -31,11 +31,11 @@ func TestRepoListArgsAndSort(t *testing.T) {
 
 func TestCloneBareArgs(t *testing.T) {
 	mock := runner.NewMock()
-	mock.Set("gh", []string{"repo", "clone", "JinmuGo/eme", "/dst/.bare", "--", "--bare"}, "", "", nil)
+	mock.Set("gh", []string{"repo", "clone", "alderwork/eme", "/dst/.bare", "--", "--bare"}, "", "", nil)
 	Runner = mock
 	defer func() { Runner = runner.Default }()
 
-	if err := CloneBare(context.Background(), "JinmuGo/eme", "/dst/.bare"); err != nil {
+	if err := CloneBare(context.Background(), "alderwork/eme", "/dst/.bare"); err != nil {
 		t.Fatalf("CloneBare: %v", err)
 	}
 }

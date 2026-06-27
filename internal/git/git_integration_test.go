@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JinmuGo/eme/internal/runner"
+	"github.com/alderwork/eme/internal/runner"
 )
 
 func gitCmd(t *testing.T, dir string, args ...string) {

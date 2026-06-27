@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 # Build + release pipeline for eme. Triggered by pushing a v* tag (see
 # .github/workflows/release.yml). Cross-compiles, publishes a GitHub release,
-# and updates the Homebrew formula in JinmuGo/homebrew-tap.
+# and updates the Homebrew formula in alderwork/homebrew-tap.
 version: 2
 
 before:
@@ -20,7 +20,7 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/JinmuGo/eme/internal/cmd.Version={{ .Version }}
+      - -X github.com/alderwork/eme/internal/cmd.Version={{ .Version }}
     main: ./cmd/eme
 
 archives:
@@ -46,19 +46,19 @@ changelog:
 
 release:
   github:
-    owner: JinmuGo
+    owner: alderwork
     name: eme
 
 brews:
   - name: eme
     repository:
-      owner: JinmuGo
+      owner: alderwork
       name: homebrew-tap
       # cross-repo push uses the PAT; the eme release itself uses the default GITHUB_TOKEN
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
-    url_template: "https://github.com/JinmuGo/eme/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    url_template: "https://github.com/alderwork/eme/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     commit_author:
-      name: JinmuGo Bot
+      name: Alderwork Bot
       email: hi@jinmugo.me
     directory: Formula
     homepage: "https://eme.jinmu.me"
@@ -75,9 +75,9 @@ brews:
 nfpms:
   - id: eme
     package_name: eme
-    vendor: JinmuGo
+    vendor: Alderwork
     homepage: https://eme.jinmu.me
-    maintainer: JinmuGo <hi@jinmugo.me>
+    maintainer: Alderwork <hi@jinmugo.me>
     description: "Mission control for your AI coding agents — run each in its own git worktree + tmux session"
     license: MIT
     formats:

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JinmuGo/eme/internal/errors"
-	"github.com/JinmuGo/eme/internal/git"
+	"github.com/alderwork/eme/internal/errors"
+	"github.com/alderwork/eme/internal/git"
 )
 
 type Options struct {

@@ -53,14 +53,14 @@
             "dateModified": "2026-06-25",
             "description": "eme runs each AI coding agent in its own git worktree as a real tmux session, and shows across every worktree which agent is waiting for input, which is running, and which is idle.",
             "url": "https://eme.jinmu.me/",
-            "downloadUrl": "https://github.com/JinmuGo/eme/releases",
-            "softwareHelp": { "@type": "CreativeWork", "url": "https://github.com/JinmuGo/eme/blob/main/docs/usage.md" },
+            "downloadUrl": "https://github.com/alderwork/eme/releases",
+            "softwareHelp": { "@type": "CreativeWork", "url": "https://github.com/alderwork/eme/blob/main/docs/usage.md" },
             "license": "https://opensource.org/licenses/MIT",
             "isAccessibleForFree": true,
             "screenshot": { "@type": "ImageObject", "url": "https://eme.jinmu.me/og-image.png", "width": 2400, "height": 1260 },
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD", "availability": "https://schema.org/InStock" },
             "author": { "@type": "Person", "name": "JinmuGo", "url": "https://github.com/JinmuGo" },
-            "sameAs": "https://github.com/JinmuGo/eme"
+            "sameAs": "https://github.com/alderwork/eme"
           },
           {
             "@type": "WebSite",
@@ -79,9 +79,9 @@
               { "@type": "Question", "name": "What is eme?", "acceptedAnswer": { "@type": "Answer", "text": "eme is a free, open-source (MIT) terminal tool that runs each AI coding agent in its own git worktree as a real tmux session, and shows across every worktree which agent is waiting for input, which is running, and which is idle. It is mission control for your AI coding agents." } },
               { "@type": "Question", "name": "Which AI coding agents does eme support?", "acceptedAnswer": { "@type": "Answer", "text": "eme ships with claude, codex, gemini, and opencode built in, and runs any other command-line agent on your PATH. To add or override one, edit ~/.config/eme/config.toml and add an [[agents]] entry with a name and the command eme should launch — matching a built-in name overrides it." } },
               { "@type": "Question", "name": "How does eme know an agent is waiting for me?", "acceptedAnswer": { "@type": "Answer", "text": "eme reads each tmux pane's foreground process for a base reading. Run 'eme hooks install' and the agent pushes its exact state into a tmux pane option that eme treats as ground truth: a permission prompt or a question shows as waiting, an active turn as running, and a finished turn as idle. Hooks support Claude Code today; other agents use the foreground heuristic." } },
-              { "@type": "Question", "name": "How do I install eme?", "acceptedAnswer": { "@type": "Answer", "text": "Install with Homebrew (brew install jinmugo/tap/eme), the install script (curl -fsSL https://eme.jinmu.me/install.sh | sh), or Go (go install github.com/JinmuGo/eme/cmd/eme@latest). eme requires tmux 3.0+ and git 2.30+. Then run 'eme' to open the dashboard." } },
+              { "@type": "Question", "name": "How do I install eme?", "acceptedAnswer": { "@type": "Answer", "text": "Install with Homebrew (brew install alderwork/tap/eme), the install script (curl -fsSL https://eme.jinmu.me/install.sh | sh), or Go (go install github.com/alderwork/eme/cmd/eme@latest). eme requires tmux 3.0+ and git 2.30+. Then run 'eme' to open the dashboard." } },
               { "@type": "Question", "name": "What platforms does eme run on?", "acceptedAnswer": { "@type": "Answer", "text": "macOS and Linux. eme is tmux-native: each project maps to a tmux session and each git worktree to a tmux window, operating on your current tmux server rather than a hidden one." } },
-              { "@type": "Question", "name": "Is eme free and open source?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. eme is MIT-licensed and developed in the open at github.com/JinmuGo/eme." } }
+              { "@type": "Question", "name": "Is eme free and open source?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. eme is MIT-licensed and developed in the open at github.com/alderwork/eme." } }
             ]
           }
         ]
@@ -101,8 +101,8 @@
     <header class="site-header">
       <a class="wordmark" href="/">eme</a>
       <nav class="nav">
-        <a id="stars" class="nav-link" href="https://github.com/JinmuGo/eme" target="_blank" rel="noopener">GitHub</a>
-        <a class="nav-link" href="https://github.com/JinmuGo/eme/releases" target="_blank" rel="noopener">Releases</a>
+        <a id="stars" class="nav-link" href="https://github.com/alderwork/eme" target="_blank" rel="noopener">GitHub</a>
+        <a class="nav-link" href="https://github.com/alderwork/eme/releases" target="_blank" rel="noopener">Releases</a>
       </nav>
     </header>
 
@@ -125,7 +125,7 @@
         </div>
         <div class="install">
           <span class="prompt">$</span>
-          <code id="install-cmd">brew install jinmugo/tap/eme</code>
+          <code id="install-cmd">brew install alderwork/tap/eme</code>
           <button id="copy" class="copy" aria-label="Copy install command">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -263,7 +263,7 @@
           </div>
           <div class="faq-item">
             <h3>How do I install eme?</h3>
-            <p>Install with Homebrew (<code>brew install jinmugo/tap/eme</code>), the install script (<code>curl -fsSL https://eme.jinmu.me/install.sh | sh</code>), or Go (<code>go install github.com/JinmuGo/eme/cmd/eme@latest</code>). eme requires tmux 3.0+ and git 2.30+. Then run <code>eme</code> to open the dashboard.</p>
+            <p>Install with Homebrew (<code>brew install alderwork/tap/eme</code>), the install script (<code>curl -fsSL https://eme.jinmu.me/install.sh | sh</code>), or Go (<code>go install github.com/alderwork/eme/cmd/eme@latest</code>). eme requires tmux 3.0+ and git 2.30+. Then run <code>eme</code> to open the dashboard.</p>
           </div>
           <div class="faq-item">
             <h3>What platforms does eme run on?</h3>
@@ -271,7 +271,7 @@
           </div>
           <div class="faq-item">
             <h3>Is eme free and open source?</h3>
-            <p>Yes. eme is MIT-licensed and developed in the open at <a href="https://github.com/JinmuGo/eme" target="_blank" rel="noopener">github.com/JinmuGo/eme</a>.</p>
+            <p>Yes. eme is MIT-licensed and developed in the open at <a href="https://github.com/alderwork/eme" target="_blank" rel="noopener">github.com/alderwork/eme</a>.</p>
           </div>
         </div>
       </section>
@@ -280,9 +280,9 @@
     <footer class="site-footer">
       <p>Created by <a href="https://github.com/JinmuGo" target="_blank" rel="noopener">jinmugo</a> &middot; MIT</p>
       <nav class="footer-links">
-        <a href="https://github.com/JinmuGo/eme" target="_blank" rel="noopener">GitHub</a>
-        <a href="https://github.com/JinmuGo/eme/releases" target="_blank" rel="noopener">Releases</a>
-        <a href="https://github.com/JinmuGo/eme/blob/main/docs/usage.md" target="_blank" rel="noopener">Docs</a>
+        <a href="https://github.com/alderwork/eme" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/alderwork/eme/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="https://github.com/alderwork/eme/blob/main/docs/usage.md" target="_blank" rel="noopener">Docs</a>
       </nav>
     </footer>
 

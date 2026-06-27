@@ -10,7 +10,7 @@ import (
 	"os/exec"
 	"sort"
 
-	"github.com/JinmuGo/eme/internal/runner"
+	"github.com/alderwork/eme/internal/runner"
 )
 
 // Runner runs external commands; tests replace it with runner.NewMock().

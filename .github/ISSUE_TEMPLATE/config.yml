@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
   - name: Usage & configuration docs
-    url: https://github.com/JinmuGo/eme/blob/main/docs/usage.md
+    url: https://github.com/alderwork/eme/blob/main/docs/usage.md
     about: Workflow, configuration, and keybindings — please check here before filing.

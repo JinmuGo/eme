@@ -4,11 +4,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JinmuGo/eme/internal/git"
-	"github.com/JinmuGo/eme/internal/runner"
-	"github.com/JinmuGo/eme/internal/state"
-	"github.com/JinmuGo/eme/internal/tmux"
-	"github.com/JinmuGo/eme/internal/tui"
+	"github.com/alderwork/eme/internal/git"
+	"github.com/alderwork/eme/internal/runner"
+	"github.com/alderwork/eme/internal/state"
+	"github.com/alderwork/eme/internal/tmux"
+	"github.com/alderwork/eme/internal/tui"
 )
 
 func TestClassifyStatus(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/JinmuGo/eme/internal/tui/theme"
+	"github.com/alderwork/eme/internal/tui/theme"
 )
 
 // AgentStatus is the lifecycle state eme surfaces for a worktree's agent.

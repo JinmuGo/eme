@@ -9,7 +9,7 @@
 # and installs the `eme` binary. macOS and Linux, amd64 and arm64.
 set -eu
 
-REPO="JinmuGo/eme"
+REPO="alderwork/eme"
 BIN="eme"
 
 # --- output ---------------------------------------------------------------

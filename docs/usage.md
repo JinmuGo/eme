@@ -7,9 +7,9 @@
 ## Install
 
 ```bash
-brew install jinmugo/tap/eme                          # Homebrew (macOS / Linux)
+brew install alderwork/tap/eme                          # Homebrew (macOS / Linux)
 curl -fsSL https://eme.jinmu.me/install.sh | sh       # install script
-go install github.com/JinmuGo/eme/cmd/eme@latest      # from source
+go install github.com/alderwork/eme/cmd/eme@latest      # from source
 ```
 
 ## Bind tmux
@@ -217,8 +217,8 @@ builds the **same nested-bare layout** as a new project, seeded from the remote:
 
 ```text
 eme clone                 # fuzzy-pick from your GitHub repos (gh repo list)
-eme clone JinmuGo/eme     # OWNER/REPO
-eme clone https://github.com/JinmuGo/eme   # or a URL (https / ssh)
+eme clone alderwork/eme     # OWNER/REPO
+eme clone https://github.com/alderwork/eme   # or a URL (https / ssh)
 eme clone eme             # bare name → your own login (gh default)
 ```
 

@@ -81,8 +81,8 @@ func TestFlowArgs_MapsPerKind(t *testing.T) {
 }
 
 func TestCloneArgs(t *testing.T) {
-	got := cloneArgs("JinmuGo/eme", "claude")
-	want := []string{"clone", "JinmuGo/eme", "--no-switch", "--agent", "claude"}
+	got := cloneArgs("alderwork/eme", "claude")
+	want := []string{"clone", "alderwork/eme", "--no-switch", "--agent", "claude"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("cloneArgs = %v, want %v", got, want)
 	}

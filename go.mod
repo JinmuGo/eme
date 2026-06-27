@@ -1,4 +1,4 @@
-module github.com/JinmuGo/eme
+module github.com/alderwork/eme
 
 go 1.26.2
 

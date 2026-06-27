@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JinmuGo/eme/internal/runner"
+	"github.com/alderwork/eme/internal/runner"
 )
 
 // TestRenderSegment locks the segment formatting: dark when nothing needs you,

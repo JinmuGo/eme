@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JinmuGo/eme/internal/errors"
-	"github.com/JinmuGo/eme/internal/git"
-	"github.com/JinmuGo/eme/internal/runner"
-	"github.com/JinmuGo/eme/internal/state"
+	"github.com/alderwork/eme/internal/errors"
+	"github.com/alderwork/eme/internal/git"
+	"github.com/alderwork/eme/internal/runner"
+	"github.com/alderwork/eme/internal/state"
 )
 
 func TestKillSession_InPlaceNeverDeletesRoot(t *testing.T) {

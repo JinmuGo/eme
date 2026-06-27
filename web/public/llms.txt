@@ -6,9 +6,9 @@ eme is for developers who run several AI coding agents in parallel (Claude Code,
 
 ## Install
 
-- Homebrew: `brew install jinmugo/tap/eme`
+- Homebrew: `brew install alderwork/tap/eme`
 - Install script: `curl -fsSL https://eme.jinmu.me/install.sh | sh`
-- Go: `go install github.com/JinmuGo/eme/cmd/eme@latest`
+- Go: `go install github.com/alderwork/eme/cmd/eme@latest`
 
 ## Key facts
 
@@ -24,17 +24,17 @@ eme is for developers who run several AI coding agents in parallel (Claude Code,
 ## Links
 
 - Homepage: https://eme.jinmu.me
-- Source code: https://github.com/JinmuGo/eme
-- Documentation: https://github.com/JinmuGo/eme/blob/main/docs/usage.md
-- Releases: https://github.com/JinmuGo/eme/releases
+- Source code: https://github.com/alderwork/eme
+- Documentation: https://github.com/alderwork/eme/blob/main/docs/usage.md
+- Releases: https://github.com/alderwork/eme/releases
 - Install script: https://eme.jinmu.me/install.sh
 
 ## License
 
-eme is released under the MIT License: https://github.com/JinmuGo/eme/blob/main/LICENSE
+eme is released under the MIT License: https://github.com/alderwork/eme/blob/main/LICENSE
 
 ## Optional
 
-- Usage guide: https://github.com/JinmuGo/eme/blob/main/docs/usage.md
-- Changelog: https://github.com/JinmuGo/eme/blob/main/CHANGELOG.md
-- README: https://github.com/JinmuGo/eme/blob/main/README.md
+- Usage guide: https://github.com/alderwork/eme/blob/main/docs/usage.md
+- Changelog: https://github.com/alderwork/eme/blob/main/CHANGELOG.md
+- README: https://github.com/alderwork/eme/blob/main/README.md

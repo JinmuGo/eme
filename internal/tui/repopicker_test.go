@@ -9,7 +9,7 @@ import (
 
 func sampleRepos() []RepoItem {
 	return []RepoItem{
-		{NameWithOwner: "JinmuGo/eme", Description: "agent mission control", Private: false},
+		{NameWithOwner: "alderwork/eme", Description: "agent mission control", Private: false},
 		{NameWithOwner: "JinmuGo/spotifynow", Description: "now playing", Private: true},
 	}
 }
@@ -20,8 +20,8 @@ func TestRepoPickerSelect(t *testing.T) {
 	if m.Cancelled() {
 		t.Fatal("unexpected cancel")
 	}
-	if m.Selected().NameWithOwner != "JinmuGo/eme" {
-		t.Errorf("Selected = %q, want JinmuGo/eme", m.Selected().NameWithOwner)
+	if m.Selected().NameWithOwner != "alderwork/eme" {
+		t.Errorf("Selected = %q, want alderwork/eme", m.Selected().NameWithOwner)
 	}
 }
 
@@ -44,7 +44,7 @@ func TestRepoPickerFilter(t *testing.T) {
 
 func TestRepoPickerBox(t *testing.T) {
 	m := NewRepoPicker(sampleRepos())
-	if got := m.Box(); !strings.Contains(got, "JinmuGo/eme") {
+	if got := m.Box(); !strings.Contains(got, "alderwork/eme") {
 		t.Errorf("Box() = %q, want it to list a repo", got)
 	}
 }

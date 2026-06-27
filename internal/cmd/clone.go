@@ -11,11 +11,11 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/JinmuGo/eme/internal/errors"
-	"github.com/JinmuGo/eme/internal/gh"
-	"github.com/JinmuGo/eme/internal/git"
-	"github.com/JinmuGo/eme/internal/session"
-	"github.com/JinmuGo/eme/internal/tui"
+	"github.com/alderwork/eme/internal/errors"
+	"github.com/alderwork/eme/internal/gh"
+	"github.com/alderwork/eme/internal/git"
+	"github.com/alderwork/eme/internal/session"
+	"github.com/alderwork/eme/internal/tui"
 )
 
 var (

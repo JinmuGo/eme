@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JinmuGo/eme/internal/runner"
+	"github.com/alderwork/eme/internal/runner"
 )
 
 func TestSetFetchRefspec(t *testing.T) {

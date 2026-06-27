@@ -1,9 +1,9 @@
 import "./style.css";
 
 const INSTALL = {
-  brew: "brew install jinmugo/tap/eme",
+  brew: "brew install alderwork/tap/eme",
   curl: "curl -fsSL https://eme.jinmu.me/install.sh | sh",
-  go: "go install github.com/JinmuGo/eme/cmd/eme@latest",
+  go: "go install github.com/alderwork/eme/cmd/eme@latest",
 };
 
 function initInstaller() {
@@ -44,7 +44,7 @@ async function initStars() {
   const el = document.getElementById("stars");
   if (!el) return;
   try {
-    const res = await fetch("https://api.github.com/repos/JinmuGo/eme");
+    const res = await fetch("https://api.github.com/repos/alderwork/eme");
     if (!res.ok) return;
     const { stargazers_count } = await res.json();
     if (typeof stargazers_count === "number") {

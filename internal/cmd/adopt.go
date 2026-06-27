@@ -6,12 +6,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/JinmuGo/eme/internal/config"
-	"github.com/JinmuGo/eme/internal/errors"
-	"github.com/JinmuGo/eme/internal/git"
-	"github.com/JinmuGo/eme/internal/session"
-	"github.com/JinmuGo/eme/internal/state"
-	"github.com/JinmuGo/eme/internal/tmux"
+	"github.com/alderwork/eme/internal/config"
+	"github.com/alderwork/eme/internal/errors"
+	"github.com/alderwork/eme/internal/git"
+	"github.com/alderwork/eme/internal/session"
+	"github.com/alderwork/eme/internal/state"
+	"github.com/alderwork/eme/internal/tmux"
 )
 
 // adoptInPlace registers a normal repo root as an in-place eme project: the

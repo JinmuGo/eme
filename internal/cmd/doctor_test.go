@@ -7,8 +7,8 @@ import (
 
 	"github.com/muesli/termenv"
 
-	"github.com/JinmuGo/eme/internal/gh"
-	"github.com/JinmuGo/eme/internal/git"
+	"github.com/alderwork/eme/internal/gh"
+	"github.com/alderwork/eme/internal/git"
 )
 
 func TestCheckGh(t *testing.T) {

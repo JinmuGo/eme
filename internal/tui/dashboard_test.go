@@ -12,7 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
-	emeerrors "github.com/JinmuGo/eme/internal/errors"
+	emeerrors "github.com/alderwork/eme/internal/errors"
 )
 
 // names returns a slice of worktree names in the order given by idx, for test diagnostics.

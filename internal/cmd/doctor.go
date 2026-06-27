@@ -9,13 +9,13 @@ import (
 	"github.com/muesli/termenv"
 	"github.com/spf13/cobra"
 
-	"github.com/JinmuGo/eme/internal/config"
-	"github.com/JinmuGo/eme/internal/errors"
-	"github.com/JinmuGo/eme/internal/gh"
-	"github.com/JinmuGo/eme/internal/git"
-	"github.com/JinmuGo/eme/internal/runner"
-	"github.com/JinmuGo/eme/internal/state"
-	"github.com/JinmuGo/eme/internal/tmux"
+	"github.com/alderwork/eme/internal/config"
+	"github.com/alderwork/eme/internal/errors"
+	"github.com/alderwork/eme/internal/gh"
+	"github.com/alderwork/eme/internal/git"
+	"github.com/alderwork/eme/internal/runner"
+	"github.com/alderwork/eme/internal/state"
+	"github.com/alderwork/eme/internal/tmux"
 )
 
 var doctorCmd = &cobra.Command{

@@ -3,9 +3,9 @@ package cmd
 import (
 	"testing"
 
-	"github.com/JinmuGo/eme/internal/runner"
-	"github.com/JinmuGo/eme/internal/state"
-	"github.com/JinmuGo/eme/internal/tmux"
+	"github.com/alderwork/eme/internal/runner"
+	"github.com/alderwork/eme/internal/state"
+	"github.com/alderwork/eme/internal/tmux"
 )
 
 // hermeticTmux swaps tmux.Runner for an unstubbed mock so RespawnPane never reaches

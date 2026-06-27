@@ -6,9 +6,9 @@
 </p>
 
 <p align="center">
-  <a href="https://pkg.go.dev/github.com/JinmuGo/eme"><img src="https://pkg.go.dev/badge/github.com/JinmuGo/eme.svg" alt="Go Reference"></a>
-  <a href="https://github.com/JinmuGo/eme/actions/workflows/ci.yml"><img src="https://github.com/JinmuGo/eme/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://goreportcard.com/report/github.com/JinmuGo/eme"><img src="https://goreportcard.com/badge/github.com/JinmuGo/eme" alt="Go Report Card"></a>
+  <a href="https://pkg.go.dev/github.com/alderwork/eme"><img src="https://pkg.go.dev/badge/github.com/alderwork/eme.svg" alt="Go Reference"></a>
+  <a href="https://github.com/alderwork/eme/actions/workflows/ci.yml"><img src="https://github.com/alderwork/eme/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://goreportcard.com/report/github.com/alderwork/eme"><img src="https://goreportcard.com/badge/github.com/alderwork/eme" alt="Go Report Card"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
 </p>
 
@@ -20,13 +20,13 @@
 
 ```bash
 # Homebrew (macOS / Linux)
-brew install jinmugo/tap/eme
+brew install alderwork/tap/eme
 
 # or the install script
 curl -fsSL https://eme.jinmu.me/install.sh | sh
 
 # or from source with Go
-go install github.com/JinmuGo/eme/cmd/eme@latest
+go install github.com/alderwork/eme/cmd/eme@latest
 ```
 
 If you use `go install`, make sure `$GOPATH/bin` is on your `PATH`.

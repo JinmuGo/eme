@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   synchronization with live tmux and git state, atomic locked state-file writes,
   and a runner interface for testable git/tmux shell-outs.
 - Distribution: prebuilt binaries (macOS/Linux · amd64/arm64) published on each
-  `v*` tag via GoReleaser, a Homebrew tap (`brew install jinmugo/tap/eme`), an
+  `v*` tag via GoReleaser, a Homebrew tap (`brew install alderwork/tap/eme`), an
   install script (`curl -fsSL https://eme.jinmu.me/install.sh | sh`), and a
   landing page at https://eme.jinmu.me.
 - Agent catalog: `eme new` shows an agent picker (built-in claude, codex, gemini,
@@ -147,5 +147,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and leaving the terminal in raw/alt-screen state. The `eme new` folder picker and
   worktree-name prompt also use the alternate screen.
 
-[Unreleased]: https://github.com/JinmuGo/eme/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/JinmuGo/eme/releases/tag/v0.1.0
+[Unreleased]: https://github.com/alderwork/eme/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/alderwork/eme/releases/tag/v0.1.0

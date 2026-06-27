@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/JinmuGo/eme/internal/convert"
+	"github.com/alderwork/eme/internal/convert"
 )
 
 // convertToNestedBare converts an existing clone at root into nested-bare, then

@@ -6,18 +6,18 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JinmuGo/eme/internal/config"
-	"github.com/JinmuGo/eme/internal/git"
-	"github.com/JinmuGo/eme/internal/runner"
+	"github.com/alderwork/eme/internal/config"
+	"github.com/alderwork/eme/internal/git"
+	"github.com/alderwork/eme/internal/runner"
 )
 
 func TestRepoNameFromSpec(t *testing.T) {
 	cases := map[string]string{
-		"JinmuGo/eme":                        "eme",
+		"alderwork/eme":                        "eme",
 		"eme":                                "eme",
-		"https://github.com/JinmuGo/eme":     "eme",
-		"https://github.com/JinmuGo/eme.git": "eme",
-		"git@github.com:JinmuGo/eme.git":     "eme",
+		"https://github.com/alderwork/eme":     "eme",
+		"https://github.com/alderwork/eme.git": "eme",
+		"git@github.com:alderwork/eme.git":     "eme",
 	}
 	for spec, want := range cases {
 		if got := repoNameFromSpec(spec); got != want {
