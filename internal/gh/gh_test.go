@@ -29,6 +29,111 @@ func TestRepoListArgsAndSort(t *testing.T) {
 	}
 }
 
+func TestOrgList(t *testing.T) {
+	mock := runner.NewMock()
+	mock.Set("gh", []string{"api", "user/orgs", "--paginate", "--jq", ".[].login"},
+		"alderwork\nacme\n", "", nil)
+	Runner = mock
+	defer func() { Runner = runner.Default }()
+
+	orgs, err := OrgList(context.Background())
+	if err != nil {
+		t.Fatalf("OrgList: %v", err)
+	}
+	if len(orgs) != 2 || orgs[0] != "alderwork" || orgs[1] != "acme" {
+		t.Fatalf("orgs = %v, want [alderwork acme]", orgs)
+	}
+}
+
+func TestRepoListOwnerPassesOwner(t *testing.T) {
+	mock := runner.NewMock()
+	mock.Set("gh", []string{"repo", "list", "alderwork", "--limit", "100", "--json", "nameWithOwner,description,isPrivate,updatedAt"},
+		`[{"nameWithOwner":"alderwork/eme","description":"d","isPrivate":true,"updatedAt":"2026-05-01T00:00:00Z"}]`,
+		"", nil)
+	Runner = mock
+	defer func() { Runner = runner.Default }()
+
+	repos, err := RepoListOwner(context.Background(), "alderwork", 100)
+	if err != nil {
+		t.Fatalf("RepoListOwner: %v", err)
+	}
+	if len(repos) != 1 || repos[0].NameWithOwner != "alderwork/eme" {
+		t.Fatalf("repos = %+v, want one alderwork/eme", repos)
+	}
+}
+
+func TestRepoListAllMergesDedupsAndSorts(t *testing.T) {
+	mock := runner.NewMock()
+	// Own repos.
+	mock.Set("gh", []string{"repo", "list", "--limit", "100", "--json", "nameWithOwner,description,isPrivate,updatedAt"},
+		`[{"nameWithOwner":"me/own","description":"","isPrivate":false,"updatedAt":"2026-03-01T00:00:00Z"}]`,
+		"", nil)
+	// Orgs the user belongs to.
+	mock.Set("gh", []string{"api", "user/orgs", "--paginate", "--jq", ".[].login"},
+		"alderwork\nbroken\n", "", nil)
+	// alderwork's repos: one newer than own, plus a duplicate of an own repo.
+	mock.Set("gh", []string{"repo", "list", "alderwork", "--limit", "100", "--json", "nameWithOwner,description,isPrivate,updatedAt"},
+		`[{"nameWithOwner":"alderwork/eme","description":"","isPrivate":true,"updatedAt":"2026-06-01T00:00:00Z"},`+
+			`{"nameWithOwner":"me/own","description":"","isPrivate":false,"updatedAt":"2020-01-01T00:00:00Z"}]`,
+		"", nil)
+	// A second org we cannot list must be skipped, never fatal.
+	mock.Set("gh", []string{"repo", "list", "broken", "--limit", "100", "--json", "nameWithOwner,description,isPrivate,updatedAt"},
+		"", "no access", errors.New("exit 1"))
+	Runner = mock
+	defer func() { Runner = runner.Default }()
+
+	repos, err := RepoListAll(context.Background(), 100)
+	if err != nil {
+		t.Fatalf("RepoListAll: %v", err)
+	}
+	// Expect own + alderwork/eme, deduped (me/own appears once), newest first.
+	if len(repos) != 2 {
+		t.Fatalf("repos = %+v, want 2 (deduped)", repos)
+	}
+	if repos[0].NameWithOwner != "alderwork/eme" || repos[1].NameWithOwner != "me/own" {
+		t.Fatalf("order = %s,%s, want alderwork/eme,me/own", repos[0].NameWithOwner, repos[1].NameWithOwner)
+	}
+}
+
+func TestRepoListAllDegradesWhenOrgListFails(t *testing.T) {
+	mock := runner.NewMock()
+	mock.Set("gh", []string{"repo", "list", "--limit", "100", "--json", "nameWithOwner,description,isPrivate,updatedAt"},
+		`[{"nameWithOwner":"me/own","description":"","isPrivate":false,"updatedAt":"2026-03-01T00:00:00Z"}]`,
+		"", nil)
+	// Org enumeration fails (e.g. missing read:org scope) — must still return own repos.
+	mock.Set("gh", []string{"api", "user/orgs", "--paginate", "--jq", ".[].login"},
+		"", "scope error", errors.New("exit 1"))
+	Runner = mock
+	defer func() { Runner = runner.Default }()
+
+	repos, err := RepoListAll(context.Background(), 100)
+	if err != nil {
+		t.Fatalf("RepoListAll: %v", err)
+	}
+	if len(repos) != 1 || repos[0].NameWithOwner != "me/own" {
+		t.Fatalf("repos = %+v, want only me/own", repos)
+	}
+}
+
+func TestRepoListAllFatalWhenOwnReposFail(t *testing.T) {
+	mock := runner.NewMock()
+	// Listing the user's OWN repos (no owner) fails: a real auth/network problem must be
+	// fatal, never silently degraded to an empty picker. RepoListAll returns before OrgList,
+	// so no user/orgs mock is needed.
+	mock.Set("gh", []string{"repo", "list", "--limit", "100", "--json", "nameWithOwner,description,isPrivate,updatedAt"},
+		"", "could not connect", errors.New("exit 1"))
+	Runner = mock
+	defer func() { Runner = runner.Default }()
+
+	repos, err := RepoListAll(context.Background(), 100)
+	if err == nil {
+		t.Fatalf("RepoListAll: want error when own repo list fails, got repos=%+v", repos)
+	}
+	if repos != nil {
+		t.Fatalf("repos = %+v, want nil on fatal own-repo failure", repos)
+	}
+}
+
 func TestCloneBareArgs(t *testing.T) {
 	mock := runner.NewMock()
 	mock.Set("gh", []string{"repo", "clone", "alderwork/eme", "/dst/.bare", "--", "--bare"}, "", "", nil)

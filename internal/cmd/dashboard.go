@@ -109,9 +109,9 @@ func runDashboard() error {
 		}
 		return tui.NewAgentPicker(items, def)
 	})
-	// The clone picker's repo list is network-bound (gh repo list), so the dashboard fetches it
-	// asynchronously behind a loading modal. cmd owns the gh call + the gh.Repo→tui.RepoItem
-	// mapping, keeping tui free of gh.
+	// The clone picker's repo list is network-bound (gh repo list, plus one call per org
+	// the user belongs to), so the dashboard fetches it asynchronously behind a loading
+	// modal. cmd owns the gh call + the gh.Repo→tui.RepoItem mapping, keeping tui free of gh.
 	model.SetRepoFetcher(func() ([]tui.RepoItem, error) {
 		if !gh.Available() {
 			return nil, errGhNotFound()
@@ -119,7 +119,7 @@ func runDashboard() error {
 		if !gh.Authed(context.Background()) {
 			return nil, errGhNotAuthed()
 		}
-		repos, err := gh.RepoList(context.Background(), 200)
+		repos, err := gh.RepoListAll(context.Background(), 200)
 		if err != nil {
 			return nil, err
 		}

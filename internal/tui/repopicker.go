@@ -33,7 +33,7 @@ type RepoPickerModel struct {
 // NewRepoPicker creates a picker over the given repositories.
 func NewRepoPicker(items []RepoItem) *RepoPickerModel {
 	ti := textinput.New()
-	ti.Placeholder = "type to filter your GitHub repos"
+	ti.Placeholder = "type to filter repos (yours + your orgs)"
 	ti.Focus()
 	return &RepoPickerModel{items: items, filtered: items, input: ti}
 }

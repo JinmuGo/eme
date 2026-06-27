@@ -634,7 +634,7 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.runChild("clone", "--no-switch")
 			}
 			m.notice = ""
-			initCmd := m.openModal(NewLoadingModal("Loading your GitHub repos…"), &modalFlow{kind: flowClone})
+			initCmd := m.openModal(NewLoadingModal("Loading your GitHub repos & orgs…"), &modalFlow{kind: flowClone})
 			return m, tea.Batch(initCmd, m.loadReposCmd())
 		case "c":
 			// Create a worktree in the session under the cursor (header or worktree).

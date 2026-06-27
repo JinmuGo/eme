@@ -166,7 +166,7 @@ func pickRepo() (spec string, cancelled bool, err error) {
 	if !gh.Authed(context.Background()) {
 		return "", false, errGhNotAuthed()
 	}
-	repos, err := gh.RepoList(context.Background(), 200)
+	repos, err := gh.RepoListAll(context.Background(), 200)
 	if err != nil {
 		return "", false, err
 	}

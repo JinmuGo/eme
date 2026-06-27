@@ -216,7 +216,7 @@ adopted in place (the clone is the `main` worktree; new worktrees go to a siblin
 builds the **same nested-bare layout** as a new project, seeded from the remote:
 
 ```text
-eme clone                 # fuzzy-pick from your GitHub repos (gh repo list)
+eme clone                 # fuzzy-pick from your repos + your orgs' repos (gh)
 eme clone alderwork/eme     # OWNER/REPO
 eme clone https://github.com/alderwork/eme   # or a URL (https / ssh)
 eme clone eme             # bare name → your own login (gh default)
