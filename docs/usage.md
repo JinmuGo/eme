@@ -261,3 +261,46 @@ Run `eme doctor <folder>` to see which action a folder would take.
 - **tmux server is not running**: start one with `tmux new-session -d`.
 - **Agent not found**: install the agent or set `agent.command`.
 - **Session name ambiguous**: use the full session id shown in `eme`.
+
+## Using eme from an AI agent (MCP)
+
+`eme mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io) server
+on stdin/stdout, letting an external AI agent manage your eme projects as tools.
+It makes no network call — it only orchestrates local tmux/git.
+
+Register it with an MCP client. For Claude Code:
+
+    claude mcp add eme -- eme mcp
+
+Or a generic client config:
+
+    {
+      "mcpServers": {
+        "eme": { "command": "eme", "args": ["mcp"] }
+      }
+    }
+
+### Tools
+
+Read-only:
+- `list_projects` — every project, its worktrees, and each worktree's agent status
+  (`idle`, `working`, `waiting-for-input`, `crashed`, `exited`).
+- `get_project` — one project by id or display name.
+- `read_worktree_output` — recent terminal output of a worktree's agent pane.
+
+Create / run (non-destructive):
+- `create_project` — new project from a local folder.
+- `clone_repo` — clone a GitHub repo (`owner/repo` or URL) into a project.
+- `create_worktree` — add a worktree (branch) to a project.
+- `start_agent` / `stop_agent` — start or interrupt the agent in a worktree.
+
+Destructive operations (`kill`, `clean`, `forget`) are intentionally **not**
+exposed; run those yourself.
+
+### tmux server
+
+The MCP server runs outside tmux, so it manages its own dedicated tmux server —
+socket `eme` by default (override with `EME_TMUX_SOCKET` or the `[tmux] socket`
+config). Attach to watch the agents it spawns:
+
+    tmux -L eme attach
