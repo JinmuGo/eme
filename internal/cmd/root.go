@@ -84,6 +84,7 @@ func init() {
 	rootCmd.AddCommand(doctorCmd)
 	rootCmd.AddCommand(forgetCmd)
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(mcpCmd)
 }
 
 // resolveTmuxSocket picks the tmux socket eme pins to: EME_TMUX_SOCKET if set,

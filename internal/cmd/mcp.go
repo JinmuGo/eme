@@ -9,6 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/spf13/cobra"
+
+	"github.com/alderwork/eme/internal/errors"
 	"github.com/alderwork/eme/internal/mcp"
 	"github.com/alderwork/eme/internal/session"
 	"github.com/alderwork/eme/internal/state"
@@ -307,4 +310,74 @@ func mcpCreateWorktree(ctx context.Context, ref, name, agent string) (mcp.Worktr
 	}
 	snap, _ := tmux.PanesSnapshot()
 	return mcpWorktree(sess, w, snap), nil
+}
+
+func newMCPDeps() mcp.Deps {
+	return mcp.Deps{
+		ServerVersion:  Version,
+		ListProjects:   mcpListProjects,
+		GetProject:     mcpGetProject,
+		ReadOutput:     mcpReadOutput,
+		CreateProject:  mcpCreateProject,
+		CloneRepo:      mcpCloneRepo,
+		CreateWorktree: mcpCreateWorktree,
+		StartAgent:     mcpStartAgent,
+		StopAgent:      mcpStopAgent,
+	}
+}
+
+// ensureMCPServer guarantees the pinned tmux server is reachable. Because the MCP
+// server runs outside tmux (as a subprocess of the AI client), it manages its own
+// dedicated server; a holder session is started detached when none exists.
+func ensureMCPServer() error {
+	if _, err := tmux.Version(); err != nil {
+		return errors.New(errors.CodeTmuxNotFound,
+			"tmux is not installed or not on PATH.",
+			"eme requires tmux to manage sessions.",
+			"Install tmux and make sure it is available on PATH.")
+	}
+	if tmux.ServerReachable() {
+		return nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "."
+	}
+	if _, err := tmux.NewSession("eme", "eme", home); err != nil {
+		return errors.Wrap(errors.CodeCommandFailed,
+			"Failed to start the eme tmux server.",
+			"tmux new-session failed.",
+			"Verify tmux works with `eme doctor`.", err)
+	}
+	return nil
+}
+
+var mcpCmd = &cobra.Command{
+	Use:   "mcp",
+	Short: "Run an MCP server so external AI agents can manage eme projects",
+	Long: `Run a Model Context Protocol (MCP) server on stdin/stdout so an external AI
+agent (Claude Desktop, Claude Code, Cursor, …) can drive eme as a tool. It speaks
+JSON-RPC 2.0 over stdio and makes no network call.
+
+Add it to an MCP client, e.g. Claude Code:
+
+    claude mcp add eme -- eme mcp
+
+Tools (read): list_projects, get_project, read_worktree_output
+Tools (create/run, non-destructive): create_project, clone_repo, create_worktree,
+start_agent, stop_agent
+
+Destructive operations (kill, clean, forget) are intentionally NOT exposed; run
+them yourself. The server manages its own dedicated tmux server (socket "eme" by
+default, or EME_TMUX_SOCKET / config); attach with: tmux -L eme attach`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if tmux.Socket == "" {
+			tmux.Socket = "eme"
+		}
+		if err := ensureMCPServer(); err != nil {
+			return err
+		}
+		return mcp.Serve(cmd.InOrStdin(), cmd.OutOrStdout(), newMCPDeps())
+	},
 }

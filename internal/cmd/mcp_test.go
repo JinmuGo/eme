@@ -205,3 +205,27 @@ func TestMCPStopAgentNoopWhenIdle(t *testing.T) {
 		t.Fatalf("result = %+v", r)
 	}
 }
+
+func TestNewMCPDepsIsFullyWired(t *testing.T) {
+	d := newMCPDeps()
+	if d.ServerVersion == "" {
+		t.Error("ServerVersion empty")
+	}
+	if d.ListProjects == nil || d.GetProject == nil || d.ReadOutput == nil ||
+		d.CreateProject == nil || d.CloneRepo == nil || d.CreateWorktree == nil ||
+		d.StartAgent == nil || d.StopAgent == nil {
+		t.Fatal("newMCPDeps left a nil function field")
+	}
+}
+
+func TestMCPCommandRegistered(t *testing.T) {
+	found := false
+	for _, c := range rootCmd.Commands() {
+		if c.Name() == "mcp" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("mcp command not registered on rootCmd")
+	}
+}
