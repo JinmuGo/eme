@@ -316,6 +316,102 @@ func TestBuildViews_SelfHealsStrandedWorkingClaude(t *testing.T) {
 	}
 }
 
+// TestBuildViews_PromotesBackgroundWorkflowToWorking locks the full dashboard path: a Claude
+// row stamped @eme_state=idle (its turn's Stop fired) whose pane is STILL repainting
+// (window_activity ~now) is shown Working — it is running a background dynamic workflow that
+// fires no hooks while it churns. Its age comes from the live activity (so it reads fresh and
+// never dims to quiet), and it gets the agent label. A sibling that went genuinely quiet stays
+// Idle.
+func TestBuildViews_PromotesBackgroundWorkflowToWorking(t *testing.T) {
+	now := time.Unix(1_750_000_600, 0)
+	fresh := now.Add(-1 * time.Second).Unix()  // still repainting → workflow running
+	stale := now.Add(-90 * time.Second).Unix() // silent → genuinely idle
+	stopAt := now.Add(-5 * time.Minute).Unix() // when Stop stamped idle (old)
+	sessions := []state.Session{{
+		ID: "s1", DisplayName: "proj", Layout: state.LayoutNestedBare,
+		Worktrees: []state.Worktree{
+			{Name: "wf", Path: "/p/wf", TmuxWindowID: "@1", LastAgentCommand: "claude"},
+			{Name: "done", Path: "/p/done", TmuxWindowID: "@2", LastAgentCommand: "claude"},
+		},
+	}}
+	snap := map[string]tmux.PaneInfo{
+		"@1": {Command: "2.1.195", EmeState: "idle", EmeStateAt: stopAt, Activity: fresh},
+		"@2": {Command: "2.1.195", EmeState: "idle", EmeStateAt: stopAt, Activity: stale},
+	}
+	got := map[string]tui.WorktreeView{}
+	for _, w := range buildViews(sessions, snap, false, now, 2*time.Minute)[0].Worktrees {
+		got[w.Name] = w
+	}
+	if got["wf"].Status != tui.StatusWorking {
+		t.Errorf("wf: status = %v, want Working (background workflow repainting)", got["wf"].Status)
+	}
+	if got["wf"].AgeLabel != "1s" {
+		t.Errorf("wf: age = %q, want 1s (derived from live window_activity, not the stale Stop)", got["wf"].AgeLabel)
+	}
+	if got["wf"].Quiet {
+		t.Error("wf: a repainting background workflow must never dim to quiet")
+	}
+	if got["wf"].AgentLabel != "claude" {
+		t.Errorf("wf: agent label = %q, want claude", got["wf"].AgentLabel)
+	}
+	if got["done"].Status != tui.StatusIdle {
+		t.Errorf("done: status = %v, want Idle (pane went quiet → genuinely idle)", got["done"].Status)
+	}
+}
+
+// TestSelfHealWorking locks the dual of selfHealIdle: a Claude row whose hook stamped
+// @eme_state=idle/done (the turn ended — e.g. Stop fired while a background dynamic
+// workflow keeps running) but whose pane is STILL repainting (fresh window_activity) is
+// promoted back to Working. A dynamic workflow renders sub-second progress, so window_activity
+// stays ~0-1s fresh while it runs; a genuinely idle pane freezes (empirically verified). The
+// promotion is gated: Claude only, an EXPLICIT idle/done hook stamp only (never an empty
+// @eme_state nor a shell foreground — those are genuinely idle), and only Idle->Working.
+func TestSelfHealWorking(t *testing.T) {
+	now := time.Unix(1_750_000_600, 0)
+	stop := now.Add(-2 * time.Minute).Unix()         // when the turn's Stop stamped @eme_state=idle
+	afterStop := now.Add(-3 * time.Second).Unix()    // a repaint well AFTER the stamp → new work
+	atStop := now.Add(-2 * time.Minute).Unix()       // last paint == the stamp → just the final render
+	staleWork := now.Add(-60 * time.Second).Unix()   // post-stamp but not recent → workflow ended
+	boundary := now.Add(-activeRepaintWindow).Unix() // exactly the window edge → not "< window"
+	wt := func(cmd string) *state.Worktree { return &state.Worktree{LastAgentCommand: cmd} }
+	cases := []struct {
+		name       string
+		in         tui.AgentStatus
+		info       tmux.PaneInfo
+		w          *state.Worktree
+		quietAfter time.Duration
+		want       tui.AgentStatus
+	}{
+		{"idle claude, recent repaint after stamp (workflow) → working",
+			tui.StatusIdle, tmux.PaneInfo{Command: "2.1.195", EmeState: "idle", EmeStateAt: stop, Activity: afterStop}, wt("claude"), 2 * time.Minute, tui.StatusWorking},
+		{"done claude, recent repaint after stamp → working",
+			tui.StatusIdle, tmux.PaneInfo{Command: "2.1.195", EmeState: "done", EmeStateAt: stop, Activity: afterStop}, wt("claude"), 2 * time.Minute, tui.StatusWorking},
+		{"just finished: last paint == stamp (final render) → stays idle",
+			tui.StatusIdle, tmux.PaneInfo{Command: "2.1.195", EmeState: "idle", EmeStateAt: stop, Activity: atStop}, wt("claude"), 2 * time.Minute, tui.StatusIdle},
+		{"workflow ended: post-stamp but not recent → stays idle",
+			tui.StatusIdle, tmux.PaneInfo{Command: "2.1.195", EmeState: "idle", EmeStateAt: stop, Activity: staleWork}, wt("claude"), 2 * time.Minute, tui.StatusIdle},
+		{"exactly at the repaint window edge → stays idle (strict <)",
+			tui.StatusIdle, tmux.PaneInfo{Command: "2.1.195", EmeState: "idle", EmeStateAt: stop, Activity: boundary}, wt("claude"), 2 * time.Minute, tui.StatusIdle},
+		{"empty @eme_state, recent activity → stays idle (un-hooked / pre-first-prompt)",
+			tui.StatusIdle, tmux.PaneInfo{Command: "2.1.195", EmeState: "", EmeStateAt: 0, Activity: afterStop}, wt("claude"), 2 * time.Minute, tui.StatusIdle},
+		{"shell foreground + stale idle stamp + recent activity → stays idle (agent exited)",
+			tui.StatusIdle, tmux.PaneInfo{Command: "zsh", EmeState: "idle", EmeStateAt: stop, Activity: afterStop}, wt("claude"), 2 * time.Minute, tui.StatusIdle},
+		{"non-claude (no hook), recent activity → stays idle",
+			tui.StatusIdle, tmux.PaneInfo{Command: "node", EmeState: "", EmeStateAt: 0, Activity: afterStop}, wt("codex"), 2 * time.Minute, tui.StatusIdle},
+		{"waiting is never touched",
+			tui.StatusWaiting, tmux.PaneInfo{Command: "2.1.195", EmeState: "waiting", EmeStateAt: stop, Activity: afterStop}, wt("claude"), 2 * time.Minute, tui.StatusWaiting},
+		{"quiet-after disabled → inert",
+			tui.StatusIdle, tmux.PaneInfo{Command: "2.1.195", EmeState: "idle", EmeStateAt: stop, Activity: afterStop}, wt("claude"), 0, tui.StatusIdle},
+		{"no window_activity timestamp → stays idle",
+			tui.StatusIdle, tmux.PaneInfo{Command: "2.1.195", EmeState: "idle", EmeStateAt: stop, Activity: 0}, wt("claude"), 2 * time.Minute, tui.StatusIdle},
+	}
+	for _, c := range cases {
+		if got := selfHealWorking(c.in, c.info, c.w, now, c.quietAfter); got != c.want {
+			t.Errorf("%s: selfHealWorking = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
 func TestBuildSessionViews_CarriesCaffeinateMode(t *testing.T) {
 	sessions := []state.Session{{
 		ID: "p-1", DisplayName: "p", Root: "/p", TmuxName: "p",

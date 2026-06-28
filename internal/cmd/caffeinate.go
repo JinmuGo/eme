@@ -208,9 +208,13 @@ func sessionStatuses(sessionID string) ([]tui.AgentStatus, bool) {
 		w := &sess.Worktrees[i]
 		info, present := snap[w.TmuxWindowID]
 		status := classifyStatus(info, present, w.LastAgentCommand)
-		// Same self-heal as the dashboard: a claude pane stuck at a stale @eme_state="working"
-		// but silent past the idle threshold is idle — don't keep the Mac awake for it.
+		// Same self-heals as the dashboard, so auto-caffeinate tracks the same truth:
+		//   - selfHealIdle: a claude pane stuck at a stale @eme_state="working" but silent past
+		//     the idle threshold is idle — don't keep the Mac awake for it.
+		//   - selfHealWorking: a claude pane stamped idle but still repainting is running a
+		//     background task (e.g. a dynamic workflow) — DO keep the Mac awake for it.
 		status = selfHealIdle(status, info, w, now, quietAfter)
+		status = selfHealWorking(status, info, w, now, quietAfter)
 		out = append(out, status)
 	}
 	return out, true

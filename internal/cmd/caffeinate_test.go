@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -199,6 +200,36 @@ func TestSessionStatuses_SelfHealsStrandedClaude(t *testing.T) {
 	}
 	if anyWorking(got) {
 		t.Fatal("a stranded-working claude must not keep caffeinate asserting")
+	}
+}
+
+// TestSessionStatuses_PromotesBackgroundWorkflowClaude: a claude pane stamped @eme_state=idle
+// (its turn's Stop fired) but STILL repainting (window_activity ~now) is running a background
+// task — e.g. a dynamic workflow — so auto-caffeinate reports Working and keeps the Mac awake,
+// matching the dashboard. Uses a live timestamp because sessionStatuses reads time.Now().
+func TestSessionStatuses_PromotesBackgroundWorkflowClaude(t *testing.T) {
+	mock := stubCaffeinateEnv(t)
+	now := strconv.FormatInt(time.Now().Unix(), 10)
+	stopAt := strconv.FormatInt(time.Now().Unix()-30, 10)
+	// @1: claude foreground, @eme_state=idle (Stop fired), window_activity ~now (still painting).
+	mock.Set("tmux", []string{"list-panes", "-a", "-F",
+		"#{window_id}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_current_command}\t#{window_activity}\t#{@eme_state}\t#{@eme_state_at}"},
+		"@1\t0\t0\t2.1.195\t"+now+"\tidle\t"+stopAt+"\n", "", nil)
+	s := &state.State{Version: state.Version, Sessions: []state.Session{{
+		ID: "proj-1", TmuxName: "proj",
+		Worktrees: []state.Worktree{{Name: "main", TmuxWindowID: "@1", LastAgentCommand: "claude"}},
+	}}}
+	withTempStatePath(t, s)
+
+	got, ok := sessionStatuses("proj-1")
+	if !ok {
+		t.Fatal("sessionStatuses: expected ok=true")
+	}
+	if len(got) != 1 || got[0] != tui.StatusWorking {
+		t.Fatalf("sessionStatuses = %v, want [working] (background workflow keeps repainting)", got)
+	}
+	if !anyWorking(got) {
+		t.Fatal("a repainting background-workflow claude must keep caffeinate asserting")
 	}
 }
 

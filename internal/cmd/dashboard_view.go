@@ -42,6 +42,9 @@ func buildViews(sessions []state.Session, snap map[string]tmux.PaneInfo, withDif
 			info, present := snap[w.TmuxWindowID]
 			status := classifyStatus(info, present, w.LastAgentCommand)
 			status = selfHealIdle(status, info, w, now, quietAfter)
+			healed := selfHealWorking(status, info, w, now, quietAfter)
+			promoted := healed != status // idle→working: a background task (e.g. a dynamic workflow) is rendering
+			status = healed
 			wv := tui.WorktreeView{
 				Name:      w.Name,
 				Branch:    w.Branch,
@@ -62,6 +65,11 @@ func buildViews(sessions []state.Session, snap map[string]tmux.PaneInfo, withDif
 			//	everything else          → no age, never quiet
 			var stateAt time.Time
 			switch {
+			case promoted && info.Activity > 0:
+				// A self-healed working row (a background workflow is rendering) takes its age from
+				// the live output time, so it reads fresh and never trips the quiet dim — its
+				// @eme_state_at is the stale Stop, which would wrongly age and dim it.
+				stateAt = time.Unix(info.Activity, 0)
 			case present && info.EmeStateAt > 0 && (status == tui.StatusWorking || status == tui.StatusWaiting):
 				stateAt = time.Unix(info.EmeStateAt, 0)
 			case present && !wv.Hooked && status == tui.StatusWorking && info.Activity > 0:
@@ -232,6 +240,59 @@ func selfHealIdle(status tui.AgentStatus, info tmux.PaneInfo, w *state.Worktree,
 // installs eme's status hooks today, so a present @eme_state implies Claude).
 func isClaudeAgent(info tmux.PaneInfo, w *state.Worktree) bool {
 	return agentLabel(w) == "claude" || strings.TrimSpace(info.EmeState) != ""
+}
+
+// activeRepaintWindow is how recently a Claude pane must have produced output to count as
+// "currently repainting". A background dynamic workflow runs in an isolated runtime that fires
+// NO hooks while it churns (so the Stop that preceded it leaves @eme_state=idle), yet Claude's
+// TUI keeps animating its progress sub-second, so window_activity stays ~0-1s fresh the whole
+// time it runs (verified empirically). 10s — 5× the 2s dashboard refresh — clears that with
+// margin against snapshot jitter, while keeping the promotion responsive to a workflow ending.
+const activeRepaintWindow = 10 * time.Second
+
+// postIdleActivityMargin is how far AFTER the idle stamp the latest repaint must fall for it to
+// count as new work rather than the turn's own final render. A Stop hook stamps @eme_state_at
+// and the final answer paints at ~the same second, so a genuinely-finished (or freshly-launched,
+// via SessionStart) pane has Activity ≈ @eme_state_at; a real background task paints seconds to
+// minutes later. This margin is what makes selfHealWorking promote ONLY on activity that
+// post-dates the turn, eliminating the bounded just-finished / fresh-launch false positives.
+const postIdleActivityMargin = 2 * time.Second
+
+// selfHealWorking is the dual of selfHealIdle: it UPGRADES a Claude row back to Working when a
+// hook stamped it idle but the pane is still actively repainting with work that POST-DATES the
+// stamp. The gap it covers is the one no hook can: a dynamic workflow (or any background task)
+// runs AFTER the turn's Stop fired, in an isolated runtime that emits no hooks while it executes
+// — so @eme_state reads "idle"/"done" while real work churns. Because that work animates the TUI
+// sub-second, a fresh window_activity is the only available signal, and it is reliable for Claude
+// (a genuinely idle Claude prompt freezes window_activity — the same property selfHealIdle relies
+// on to demote a stranded agent; a running workflow does not).
+//
+// It only ever turns Idle→Working (never toward Waiting, so it can't false-light the amber
+// beacon), and is tightly gated so it can never resurrect a genuinely-idle row:
+//   - quietAfter must be enabled (>0) — the same master switch as selfHealIdle;
+//   - the agent must be Claude (isClaudeAgent) — only its TUI repaints while busy;
+//   - the idle must be an EXPLICIT hook stamp (@eme_state idle/done) with its @eme_state_at: an
+//     empty @eme_state (un-hooked, or before the first prompt) and a shell foreground (the agent
+//     EXITED — shell is ground-truth idle) are both left untouched;
+//   - the latest repaint must be both RECENT (within activeRepaintWindow → still running) and
+//     AFTER the idle stamp by postIdleActivityMargin (→ new work, not the turn's final render).
+func selfHealWorking(status tui.AgentStatus, info tmux.PaneInfo, w *state.Worktree, now time.Time, quietAfter time.Duration) tui.AgentStatus {
+	if status != tui.StatusIdle || quietAfter <= 0 || info.Activity <= 0 || info.EmeStateAt <= 0 || !isClaudeAgent(info, w) {
+		return status
+	}
+	if isShellCommand(info.Command) {
+		return status // a shell prompt is ground-truth idle — the agent exited, never promote
+	}
+	if s, ok := emeState(info.EmeState); !ok || s != tui.StatusIdle {
+		return status // only an explicit hook-stamped idle/done qualifies, not "" or a guess
+	}
+	activity := time.Unix(info.Activity, 0)
+	stamped := time.Unix(info.EmeStateAt, 0)
+	// Recent (still running) AND clearly after the stamp (new work, not the turn's final render).
+	if now.Sub(activity) < activeRepaintWindow && activity.After(stamped.Add(postIdleActivityMargin)) {
+		return tui.StatusWorking
+	}
+	return status
 }
 
 // shortLocation renders a filesystem path as its last two path segments, prefixed with
